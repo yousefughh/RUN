@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1115">
+  <title>RUNMATE — اجري معنا</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+  <!-- شاشة التسجيل وتأكيد الدخول -->
+  <div class="auth-container" id="auth-screen">
+    <div class="auth-box">
+      <div class="auth-brand"><span class="brand-mark">.R</span> RUNMATE<span class="brand-dot">.</span></div>
+      <p class="auth-note">ادخل لحسابك أو أنشئ حسابًا جديدًا</p>
+      
+      <div class="auth-tabs">
+        <button class="active" id="tab-login" type="button">تسجيل الدخول</button>
+        <button id="tab-register" type="button">حساب جديد</button>
+      </div>
+
+      <!-- نموذج تسجيل الدخول -->
+      <form class="auth-form" id="form-login">
+        <label> البريد الإلكتروني
+          <input type="email" id="login-identity" autocomplete="username" required placeholder="name@example.com">
+        </label>
+        <label>كلمة السر
+          <input type="password" id="login-pass" autocomplete="current-password" required placeholder="********">
+        </label>
+        <button class="primary-btn" type="submit">دخول</button>
+        <button type="button" id="forgot-pass-btn" class="text-link-btn">نسيت كلمة السر؟</button>
+      </form>
+
+      <!-- نموذج حساب جديد -->
+      <form class="auth-form" id="form-register" style="display:none">
+        <label>الاسم الكامل
+          <input type="text" id="reg-name" required placeholder="يوسف محمد">
+        </label>
+        <label>البريد الإلكتروني
+          <input type="email" id="reg-identity" required placeholder="name@example.com">
+        </label>
+        <label>رقم الهاتف (بيانات شخصية)
+          <input type="tel" id="reg-phone" placeholder="010XXXXXXXX">
+        </label>
+        <label>كلمة السر
+          <input type="password" id="reg-pass" required placeholder="********">
+        </label>
+        <button class="primary-btn" type="submit">إنشاء الحساب</button>
+      </form>
+
+      <p id="auth-message"></p>
+    </div>
+  </div>
+
+  <!-- الواجهة الرئيسية للموقع (تظهر بعد تسجيل الدخول) -->
+  <div id="app-shell">
+    <header class="top-nav">
+      <div class="brand"><span class="brand-mark">.R</span> RUNMATE</div>
+      <nav class="nav-links">
+        <button data-page="home" class="active">الرئيسية</button>
+        <button data-page="explore">اكتشف</button>
+        <button data-page="tickets">حجوزاتي</button>
+        <button data-page="chats">المحادثات</button>
+        <button data-page="organizer" class="admin-only" hidden>إدارة الجريات</button>
+        <button data-page="profile">حسابي</button>
+      </nav>
+      <div class="user-menu">
+        <div class="avatar" id="user-avatar-initials">U</div>
+        <button id="logout-btn" class="logout-btn">خروج</button>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <div class="breadcrumb">منصة الجري / <span id="crumb-active">الرئيسية</span></div>
+
+      <!-- صفحة الرئيسية -->
+      <section class="page active" id="page-home">
+        <div class="hero">
+          <h2>جاهز لجريتك الجاية؟</h2>
+          <p>اكتشف الجريات المتاحة واحجز مكانك الآن.</p>
+        </div>
+        <div class="section-title">الجريات القادمة</div>
+        <div class="runs-grid" id="home-runs"></div>
+      </section>
+
+      <!-- صفحة اكتشف -->
+      <section class="page" id="page-explore">
+        <div class="search-bar">
+          <input type="text" id="search" placeholder="ابحث عن جَرية أو موقع...">
+        </div>
+        <div class="runs-grid" id="explore-runs"></div>
+      </section>
+
+      <!-- صفحة حجوزاتي -->
+      <section class="page" id="page-tickets">
+        <h2>الجريات المحجوزة (<span id="ticket-count">0</span>)</h2>
+        <div class="tickets-list" id="ticket-list"></div>
+      </section>
+
+      <!-- صفحة المحادثات -->
+      <section class="page" id="page-chats">
+        <div class="chat-container">
+          <aside class="chat-sidebar" id="chat-runs"></aside>
+          <div class="chat-panel" id="chat-panel">
+            <p class="empty-state">اختر جَرية لبدء المحادثة مع المشاركين</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- صفحة إدارة الجريات (للأدمن فقط) -->
+      <section class="page admin-only" id="page-organizer" hidden>
+        <h2>إنشاء جَرية جديدة</h2>
+        <form id="organizer-form" class="form-card">
+          <label>عنوان الجَرية <input type="text" id="org-title" required placeholder="ماراثون التحرير"></label>
+          <div class="form-row">
+            <label>التاريخ <input type="date" id="org-date" required></label>
+            <label>الوقت <input type="time" id="org-time" required></label>
+          </div>
+          <div class="form-row">
+            <label>الموقع <input type="text" id="org-location" required placeholder="القاهرة"></label>
+            <label>المسافة (كم) <input type="number" id="org-distance" value="5" min="1" required></label>
+          </div>
+          <div class="form-row">
+            <label>عدد المقاعد <input type="number" id="org-seats" value="15" min="1" required></label>
+            <label>السعر <input type="text" id="org-price" value="مجانية" required></label>
+          </div>
+          <label>رابط الصورة <input type="url" id="org-image" placeholder="https://..."></label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="org-admin-only"> المحادثة للقراءة فقط (الأدمن يتحدث فقط)
+          </label>
+          <button class="primary-btn" type="submit">نشر الجَرية</button>
+        </form>
+      </section>
+
+      <!-- صفحة حسابي -->
+      <section class="page" id="page-profile">
+        <div class="profile-card">
+          <div class="avatar-large" id="profile-avatar-large">U</div>
+          <h3 id="profile-name">اسم المستخدم</h3>
+          <p id="profile-email" class="muted-text">email@example.com</p>
+          <p id="profile-phone" class="muted-text">010XXXXXXXX</p>
+          <span class="role-badge" id="profile-role">عضو RUNMATE</span>
+        </div>
+      </section>
+    </main>
+
+    <!-- Modal التفاصيل -->
+    <div class="modal" id="modal">
+      <div class="modal-card">
+        <button class="modal-close" id="modal-close">&times;</button>
+        <div id="modal-content"></div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
