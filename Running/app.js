@@ -249,6 +249,24 @@ $('organizer-form').addEventListener('submit', async e => {
   e.preventDefault();
   if (!isAdmin()) return toast('هذه العملية متاحة للأدمن فقط');
 
+  const imageFile = $('org-image-file').files?.[0];
+  const acceptedImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (imageFile && !acceptedImageTypes.includes(imageFile.type)) return toast('اختر صورة JPG أو PNG أو WebP.');
+  if (imageFile && imageFile.size > 5 * 1024 * 1024) return toast('يجب ألا يتجاوز حجم الصورة 5 ميغابايت.');
+
+  let uploadedImagePath = null;
+  let imageUrl = $('org-image').value.trim() || null;
+  if (imageFile) {
+    const extension = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[imageFile.type];
+    uploadedImagePath = `${state.user.id}/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await db.storage.from('runmate-run-images').upload(uploadedImagePath, imageFile, { contentType: imageFile.type, upsert: false });
+    if (uploadError) {
+      console.error('Run image upload failed:', uploadError.statusCode || 'unknown');
+      return toast('تعذّر رفع صورة الجَرية. حاول مجدداً.');
+    }
+    imageUrl = db.storage.from('runmate-run-images').getPublicUrl(uploadedImagePath).data.publicUrl;
+  }
+
   const date = $('org-date').value;
   const time = $('org-time').value;
   const startsAt = new Date(`${date}T${time}`).toISOString();
@@ -260,14 +278,20 @@ $('organizer-form').addEventListener('submit', async e => {
     distance_km: Number($('org-distance').value),
     seats_total: Number($('org-seats').value),
     price: $('org-price').value.trim(),
-    image_url: $('org-image').value.trim() || null,
+    image_url: imageUrl,
     admin_only_chat: $('org-admin-only').checked,
     organizer_name: state.profile.display_name,
     created_by: state.user.id
   };
 
   const { error } = await db.from('runs').insert(row);
-  if (error) return toast('لم يتم إنشاء الجَرية: ' + error.message);
+  if (error) {
+    if (uploadedImagePath) {
+      const { error: cleanupError } = await db.storage.from('runmate-run-images').remove([uploadedImagePath]);
+      if (cleanupError) console.error('Run image cleanup failed:', cleanupError.statusCode || 'unknown');
+    }
+    return toast('لم يتم إنشاء الجَرية: ' + error.message);
+  }
 
   $('organizer-form').reset();
   await refreshData();
