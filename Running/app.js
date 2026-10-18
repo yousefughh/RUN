@@ -696,6 +696,19 @@ $('profile-photo-form').addEventListener('submit', async event => {
   status.textContent = 'تم تحديث صورة الحساب.';
 });
 
+$('profile-logout-btn').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = 'جارٍ تسجيل الخروج...';
+  const { error } = await db.auth.signOut();
+  if (error) {
+    button.disabled = false;
+    button.textContent = 'تسجيل الخروج';
+    return toast('تعذّر تسجيل الخروج. حاول مرة أخرى.');
+  }
+  location.reload();
+});
+
 async function loadAdminPanel() {
   if (!isAdmin()) return;
   const pendingBox = $('admin-pending-clips');
