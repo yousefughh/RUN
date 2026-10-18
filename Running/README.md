@@ -18,9 +18,22 @@ update public.profiles set role = 'admin' where id = 'YOUR_AUTH_USER_UUID';
 
 لا يمكن ترقية الحساب من واجهة الموقع أو بيانات التسجيل.
 
+لترقية حساب موثوق إلى مالك، استخدم بريد الحساب بدلًا من UUID في SQL Editor:
+
+```sql
+UPDATE public.profiles p
+SET role = 'owner'
+FROM auth.users u
+WHERE p.id = u.id AND lower(u.email) = lower('YOUR_LOGIN_EMAIL');
+```
+
+نفّذ الترقية الأولية للمالك مرة واحدة من SQL Editor. بعدها يستطيع المالك إضافة عدة مديرين أو مالكين من لوحة الإدارة؛ يمنع النظام إزالة دور آخر مالك أو تخفيض المالك الوحيد. لا تسمح واجهة التسجيل باختيار أي دور إداري. إذا استمر خطأ التسجيل، شغّل الاستعلامات الآمنة للقراءة فقط في `supabase-diagnostics.sql` وأرسل النتائج؛ فهي تكشف كل triggers الفعلية على `auth.users` والأعمدة والقيود والسياسات.
+
 ## النشر على Vercel
 
-اختر مجلد `Running` كـ Root Directory، Framework Preset: Other، ولا تضع Build Command. الملفات الثابتة تُقدَّم من جذر المجلد، و`vercel.json` يعيد المسارات الداخلية إلى `index.html`.
+## رابط الموقع على GitHub Pages
+
+بعد دمج التعديل، افتح Settings > Pages في المستودع واختر GitHub Actions كمصدر النشر. ينشر workflow مجلد `Running/`، والرابط المتوقع هو `https://yousefughh.github.io/RUN/`. أضف هذا الرابط إلى Supabase Authentication > URL Configuration ضمن Site URL وRedirect URLs حتى تعمل روابط تأكيد البريد على الهواتف.
 
 ## المقاطع
 
