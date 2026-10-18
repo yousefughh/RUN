@@ -2,10 +2,9 @@
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone text;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_path text;
 ALTER TABLE public.runs ADD COLUMN IF NOT EXISTS seats_booked integer NOT NULL DEFAULT 0;
-
 -- Keep available seats in sync with bookings and reject overbooking.
 CREATE OR REPLACE FUNCTION public.sync_run_seats_booked()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $sync$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
     UPDATE public.runs
@@ -21,7 +20,7 @@ BEGIN
   END IF;
   RETURN NULL;
 END;
-$sync$;
+$$;
 DROP TRIGGER IF EXISTS bookings_sync_run_seats_after_insert ON public.bookings;
 DROP TRIGGER IF EXISTS bookings_sync_run_seats_after_delete ON public.bookings;
 CREATE TRIGGER bookings_sync_run_seats_after_insert
@@ -49,15 +48,11 @@ ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
 ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('member', 'admin', 'owner'));
 
 CREATE OR REPLACE FUNCTION public.protect_profile_role()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
 BEGIN
   IF NEW.role IS DISTINCT FROM OLD.role
-     AND auth.uid() IS NOT NULL
-     AND NOT EXISTS (
-       SELECT 1 FROM public.profiles p
-       WHERE p.id = auth.uid() AND p.role IN ('admin', 'owner')
-     ) THEN
-    RAISE EXCEPTION 'Only an administrator or owner can change account roles';
+     AND current_user NOT IN ('postgres', 'service_role') THEN
+    RAISE EXCEPTION 'Account roles can only be changed through the owner role-management function';
   END IF;
   RETURN NEW;
 END;
@@ -89,6 +84,12 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.set_profile_role(uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_profile_role(uuid, text) TO authenticated;
+
+-- Keep existing phone values in the database but make them unavailable through
+-- the browser API. The public profile fields below are the only ones clients can read.
+REVOKE SELECT, UPDATE ON TABLE public.profiles FROM PUBLIC, anon, authenticated;
+GRANT SELECT (id, display_name, avatar_path, role, created_at) ON TABLE public.profiles TO anon, authenticated;
+GRANT UPDATE (display_name, avatar_path) ON TABLE public.profiles TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
@@ -191,5 +192,4 @@ CREATE POLICY "Admins upload run images" ON storage.objects FOR INSERT TO authen
 WITH CHECK (bucket_id = 'runmate-run-images' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner')));
 CREATE POLICY "Admins delete run images" ON storage.objects FOR DELETE TO authenticated
 USING (bucket_id = 'runmate-run-images' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner')));
-
 

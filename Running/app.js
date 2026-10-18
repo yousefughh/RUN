@@ -1,10 +1,11 @@
 /* RUNMATE + Supabase Client Config */
 const SUPABASE_URL = 'https://trqrpoployvsuuitffji.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_H54WIGq4spz51QFkSjmR8w_ohdXdv90';
+const AUTH_REDIRECT_URL = 'https://yousefughh.github.io/RUN/';
 const supabaseReady = SUPABASE_URL.startsWith('https://') && !SUPABASE_URL.includes('YOUR_');
 const db = supabaseReady ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, authListener: false, clips: [] };
+const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, authListener: false, loadingSessionUserId: null, clips: [] };
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const isAdmin = () => ['admin', 'owner'].includes(state.profile?.role);
@@ -37,9 +38,6 @@ $('form-register').addEventListener('submit', async e => {
 
   const name = $('reg-name').value.trim();
   const email = $('reg-identity').value.trim();
-  const rawPhone = $('reg-phone')?.value.trim() || '';
-  const phone = rawPhone.replace(/[()\s-]/g, '');
-  if (rawPhone && !/^\+?[1-9]\d{6,14}$/.test(phone)) return showMessage('أدخل رقم هاتف صحيحاً بصيغة دولية، أو اترك الحقل فارغاً.');
   const password = $('reg-pass').value;
 
   showMessage('جارٍ إنشاء الحساب...');
@@ -47,7 +45,10 @@ $('form-register').addEventListener('submit', async e => {
   const { data, error } = await db.auth.signUp({
     email,
     password,
-    options: { data: { display_name: name, phone } }
+    options: {
+      data: { display_name: name },
+      emailRedirectTo: AUTH_REDIRECT_URL
+    }
   });
 
   if (error) { console.error('Signup failed:', error.code || 'unknown', error.message || ''); return showMessage('تعذّر إنشاء الحساب. أعد المحاولة، وإذا استمر العطل أرسل للدعم رمز الخطأ الظاهر في Console.'); }
@@ -57,7 +58,7 @@ $('form-register').addEventListener('submit', async e => {
       await loadSession(data.session);
       toast('تم إنشاء الحساب بنجاح');
     } else {
-      showMessage('راجع بريدك الإلكتروني لتأكيد الحساب، ثم سجّل الدخول.');
+      showMessage('افتح رسالة تأكيد البريد واضغط الرابط؛ سيعود بك إلى الموقع ويسجّل دخولك تلقائيًا.');
     }
   }
 });
@@ -86,7 +87,7 @@ $('forgot-pass-btn').addEventListener('click', async () => {
   }
   showMessage('جارٍ إرسال رابط استعادة كلمة السر...');
   const { error } = await db.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.href,
+    redirectTo: AUTH_REDIRECT_URL,
   });
   if (error) { console.error('Password reset request failed:', error.code || 'unknown'); return showMessage('تعذّر إرسال رابط إعادة التعيين. حاول مجدداً لاحقاً.'); }
   toast('تم إرسال رابط إعادة تعيين كلمة السر إلى بريدك الإلكتروني.');
@@ -94,12 +95,15 @@ $('forgot-pass-btn').addEventListener('click', async () => {
 
 /* تحميل الجلسة وتحميل البيانات */
 async function loadSession(session) {
+  if (!session?.user?.id || state.loadingSessionUserId === session.user.id || state.profile?.id === session.user.id) return;
+  state.loadingSessionUserId = session.user.id;
   state.user = session.user;
-  let { data: profile, error } = await db.from('profiles').select('*').eq('id', state.user.id).single();
+  let { data: profile, error } = await db.from('profiles').select('id,display_name,avatar_path,role,created_at').eq('id', state.user.id).single();
 
   if (error || !profile) {
     showMessage('تعذّر العثور على ملف الحساب. طبّق supabase-migration.sql في مشروع Supabase ثم سجّل الدخول مجدداً.');
     console.error('Profile lookup failed:', error?.code || 'profile missing');
+    state.loadingSessionUserId = null;
     return;
   }
 
@@ -108,7 +112,6 @@ async function loadSession(session) {
 
   const name = profile.display_name || 'مستخدم RUNMATE';
   const email = state.user.email || '';
-  const phone = profile.phone || '';
   const initial = Array.from(name)[0] || 'U';
 
   const avatarUrl = profile.avatar_path ? db.storage.from('runmate-avatars').getPublicUrl(profile.avatar_path).data.publicUrl : '';
@@ -117,20 +120,13 @@ async function loadSession(session) {
   $('profile-avatar-large').innerHTML = avatarMarkup;
   $('profile-name').textContent = name;
   $('profile-email').textContent = email;
-  $('profile-phone').textContent = phone ? `الهاتف: ${phone}` : '';
   $('profile-role').textContent = state.profile.role === 'owner' ? 'مالك RUNMATE' : isAdmin() ? 'حساب أدمن' : 'عضو RUNMATE';
 
   document.querySelectorAll('.admin-only').forEach(el => el.hidden = !isAdmin());
 
   await refreshData();
   navigateTo('home');
-
-  if (!state.authListener) {
-    state.authListener = true;
-    db.auth.onAuthStateChange((event, currentSession) => {
-      if (event === 'SIGNED_OUT' || !currentSession) location.reload();
-    });
-  }
+  state.loadingSessionUserId = null;
 }
 
 async function refreshData() {
@@ -156,7 +152,7 @@ function navigateTo(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${pageId}`));
   document.querySelectorAll('[data-page]').forEach(item => item.classList.toggle('active', item.dataset.page === pageId));
   
-  const names = { clips: 'Clips', admin: 'Admin', home: 'الرئيسية', tickets: 'حجوزاتي', chats: 'المحادثات', profile: 'حسابي', organizer: 'إدارة الجريات' };
+  const names = { clips: 'Clips', admin: 'Admin', home: 'الرئيسية', tickets: 'حجوزاتي', chats: 'المحادثات', profile: 'الملف الشخصي', organizer: 'إدارة الجريات' };
   $('crumb-active').textContent = names[pageId] || 'RUNMATE';
 
   if (pageId === 'chats') renderChatsList();
@@ -169,21 +165,12 @@ document.addEventListener('click', e => {
   if (pageBtn) {
     e.preventDefault();
     navigateTo(pageBtn.dataset.page);
-    $('main-nav').classList.remove('open');
-    $('mobile-menu-toggle').setAttribute('aria-expanded', 'false');
-    document.querySelector('.top-nav').classList.remove('mobile-nav-open');
   }
+  if (e.target.closest('#user-avatar-initials')) navigateTo('profile');
   const openBtn = e.target.closest('[data-event]');
   if (openBtn) openModal(openBtn.dataset.event);
   const chatBtn = e.target.closest('[data-chat-run]');
   if (chatBtn) openChat(chatBtn.dataset.chatRun);
-});
-
-$('mobile-menu-toggle').addEventListener('click', () => {
-  const open = $('mobile-menu-toggle').getAttribute('aria-expanded') !== 'true';
-  $('mobile-menu-toggle').setAttribute('aria-expanded', String(open));
-  $('main-nav').classList.toggle('open', open);
-  document.querySelector('.top-nav').classList.toggle('mobile-nav-open', open);
 });
 
 function formatDate(value) {
@@ -204,8 +191,29 @@ function createRunCard(run) {
 function renderEvents() {
   const query = ($('search')?.value || '').trim().toLowerCase();
   const list = state.events.filter(run => `${run.title} ${run.location}`.toLowerCase().includes(query));
-
-  $('home-runs').innerHTML = list.length ? list.map(createRunCard).join('') : '<p class="empty-state">لا توجد جريات تطابق بحثك.</p>';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayTime = today.getTime();
+  const groups = { upcoming: [], current: [], previous: [] };
+  list.forEach(run => {
+    const runDate = new Date(run.starts_at);
+    if (Number.isNaN(runDate.getTime())) {
+      groups.upcoming.push(run);
+      return;
+    }
+    runDate.setHours(0, 0, 0, 0);
+    if (runDate.getTime() > todayTime) groups.upcoming.push(run);
+    else if (runDate.getTime() === todayTime) groups.current.push(run);
+    else groups.previous.push(run);
+  });
+  const sections = [
+    ['upcoming-runs', groups.upcoming, 'لا توجد جريات قادمة تطابق بحثك.'],
+    ['current-runs', groups.current, 'لا توجد جريات حالية اليوم.'],
+    ['previous-runs', groups.previous, 'لا توجد جريات سابقة تطابق بحثك.']
+  ];
+  sections.forEach(([id, runs, emptyMessage]) => {
+    $(id).innerHTML = runs.length ? runs.map(createRunCard).join('') : `<p class="empty-state">${emptyMessage}</p>`;
+  });
   $('ticket-count').textContent = state.bookings.length;
   $('ticket-list').innerHTML = state.bookings.length ? state.bookings.map(run => `<div class="ticket-card"><div class="ticket-body"><h3>${escapeHtml(run.title)}</h3><p class="muted-text">${escapeHtml(formatDate(run.starts_at))} · ${escapeHtml(run.location)}</p><button class="primary-btn" data-chat-run="${escapeHtml(run.id)}" data-page="chats">افتح المحادثة</button></div></div>`).join('') : '<p class="empty-state">لم تحجز أي جَرية حتى الآن.</p>';
 }
@@ -362,15 +370,17 @@ async function openChat(runId) {
   };
 }
 
-$('logout-btn').addEventListener('click', async () => {
-  if (db) await db.auth.signOut();
-  location.reload();
-});
-
 async function startApp() {
   if (!db) {
     $('auth-screen').style.display = 'flex';$('app-shell').classList.remove('authenticated');
     return;
+  }
+  if (!state.authListener) {
+    state.authListener = true;
+    db.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) setTimeout(() => loadSession(session), 0);
+      if (event === 'SIGNED_OUT') location.reload();
+    });
   }
   const { data: { session } } = await db.auth.getSession();
   if (session) await loadSession(session);
@@ -453,7 +463,7 @@ $('profile-photo-form').addEventListener('submit', async event => {
     return;
   }
 
-  const { data: updatedProfile, error: updateError } = await db.from('profiles').update({ avatar_path: path }).eq('id', state.user.id).select('*').single();
+  const { data: updatedProfile, error: updateError } = await db.from('profiles').update({ avatar_path: path }).eq('id', state.user.id).select('id,display_name,avatar_path,role,created_at').single();
   if (updateError) {
     const { error: cleanupError } = await db.storage.from('runmate-avatars').remove([path]);
     status.textContent = 'تعذّر حفظ صورة الحساب. حاول مجدداً.';
@@ -542,14 +552,13 @@ $('resend-confirmation-btn').addEventListener('click', async () => {
   const email = $('reg-identity').value.trim() || $('login-identity').value.trim();
   if (!email || !email.includes('@')) return showMessage('أدخل بريدك الإلكتروني في نموذج التسجيل أو الدخول أولاً.');
   showMessage('جارٍ إرسال رسالة التأكيد...');
-  const { error } = await db.auth.resend({ type: 'signup', email });
+  const { error } = await db.auth.resend({ type: 'signup', email, options: { emailRedirectTo: AUTH_REDIRECT_URL } });
   if (error) {
     console.error('Confirmation resend failed:', error.code || 'unknown');
     return showMessage('تعذّر إرسال رسالة التأكيد. تحقق من البريد وحاول مجدداً لاحقاً.');
   }
   showMessage('إذا كان الحساب بحاجة إلى التأكيد، ستصلك رسالة على بريدك الإلكتروني.');
 });
-
 
 
 
