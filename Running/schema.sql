@@ -441,6 +441,51 @@ WITH CHECK (bucket_id = 'runmate-avatars' AND (storage.foldername(name))[1] = au
 CREATE POLICY "Users delete their own profile photos" ON storage.objects FOR DELETE TO authenticated
 USING (bucket_id = 'runmate-avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
 
+-- Let a runner view only the avatars of people booked into a run they can access.
+CREATE OR REPLACE FUNCTION public.can_view_run_chat_avatar(avatar_file_path text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT auth.uid() IS NOT NULL AND (
+    public.is_admin_or_owner() OR EXISTS (
+      SELECT 1
+      FROM public.profiles owner_profile
+      JOIN public.bookings owner_booking ON owner_booking.user_id = owner_profile.id
+      JOIN public.bookings viewer_booking ON viewer_booking.run_id = owner_booking.run_id
+      WHERE owner_profile.avatar_path = avatar_file_path
+        AND viewer_booking.user_id = auth.uid()
+    )
+  );
+$$;
+REVOKE ALL ON FUNCTION public.can_view_run_chat_avatar(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_view_run_chat_avatar(text) TO authenticated;
+DROP POLICY IF EXISTS "Run participants can view each other's chat avatars" ON storage.objects;
+CREATE POLICY "Run participants can view each other's chat avatars" ON storage.objects FOR SELECT TO authenticated
+USING (bucket_id = 'runmate-avatars' AND public.can_view_run_chat_avatar(name));
+
+-- Return chat messages with only the sender name and private avatar path.
+CREATE OR REPLACE FUNCTION public.get_run_chat_messages(p_run_id uuid)
+RETURNS TABLE (id uuid, body text, created_at timestamptz, sender_name text, avatar_path text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF NOT (
+    EXISTS (SELECT 1 FROM public.bookings b WHERE b.run_id = p_run_id AND b.user_id = auth.uid())
+    OR public.is_admin_or_owner()
+  ) THEN
+    RAISE EXCEPTION 'chat_access_denied';
+  END IF;
+
+  RETURN QUERY
+  SELECT m.id, m.body, m.created_at,
+         COALESCE(NULLIF(p.display_name, ''), 'عضو في Stride'), p.avatar_path
+  FROM public.messages m
+  LEFT JOIN public.profiles p ON p.id = m.user_id
+  WHERE m.run_id = p_run_id
+  ORDER BY m.created_at DESC
+  LIMIT 300;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.get_run_chat_messages(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_run_chat_messages(uuid) TO authenticated;
+
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('runmate-run-images', 'runmate-run-images', true, 5242880, ARRAY['image/jpeg','image/png','image/webp'])
 ON CONFLICT (id) DO UPDATE SET public = true, file_size_limit = EXCLUDED.file_size_limit,
