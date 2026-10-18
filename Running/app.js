@@ -110,8 +110,10 @@ async function loadSession(session) {
   const phone = profile.phone || '';
   const initial = Array.from(name)[0] || 'U';
 
-  $('user-avatar-initials').textContent = initial;
-  $('profile-avatar-large').textContent = initial;
+  const avatarUrl = profile.avatar_path ? db.storage.from('runmate-avatars').getPublicUrl(profile.avatar_path).data.publicUrl : '';
+  const avatarMarkup = avatarUrl ? `<img src="${escapeHtml(avatarUrl)}" alt="صورة ${escapeHtml(name)}">` : escapeHtml(initial);
+  $('user-avatar-initials').innerHTML = avatarMarkup;
+  $('profile-avatar-large').innerHTML = avatarMarkup;
   $('profile-name').textContent = name;
   $('profile-email').textContent = email;
   $('profile-phone').textContent = phone ? `الهاتف: ${phone}` : '';
@@ -394,6 +396,47 @@ $('clip-upload-form').addEventListener('submit', async event => {
   await loadClips();
 });
 
+$('profile-photo-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const file = $('profile-photo-file').files?.[0];
+  const status = $('profile-photo-status');
+  const accepted = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!file || !accepted.includes(file.type)) return status.textContent = 'اختر صورة JPG أو PNG أو WebP.';
+  if (file.size > 5 * 1024 * 1024) return status.textContent = 'يجب ألا يتجاوز حجم الصورة 5 ميغابايت.';
+
+  const extension = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[file.type];
+  const path = `${state.user.id}/${crypto.randomUUID()}.${extension}`;
+  const oldPath = state.profile?.avatar_path;
+  status.textContent = 'جارٍ رفع صورة الحساب...';
+  const { error: uploadError } = await db.storage.from('runmate-avatars').upload(path, file, { contentType: file.type, upsert: false });
+  if (uploadError) {
+    status.textContent = 'تعذّر رفع الصورة. حاول مجدداً.';
+    console.error('Profile photo upload failed:', uploadError.statusCode || 'unknown');
+    return;
+  }
+
+  const { data: updatedProfile, error: updateError } = await db.from('profiles').update({ avatar_path: path }).eq('id', state.user.id).select('*').single();
+  if (updateError) {
+    const { error: cleanupError } = await db.storage.from('runmate-avatars').remove([path]);
+    status.textContent = 'تعذّر حفظ صورة الحساب. حاول مجدداً.';
+    console.error('Profile photo update failed:', updateError.code || 'unknown', cleanupError ? 'Storage cleanup failed' : '');
+    return;
+  }
+
+  state.profile = updatedProfile;
+  const publicUrl = db.storage.from('runmate-avatars').getPublicUrl(path).data.publicUrl;
+  const name = state.profile.display_name || 'مستخدم RUNMATE';
+  const markup = `<img src="${escapeHtml(publicUrl)}" alt="صورة ${escapeHtml(name)}">`;
+  $('user-avatar-initials').innerHTML = markup;
+  $('profile-avatar-large').innerHTML = markup;
+  if (oldPath) {
+    const { error: removeError } = await db.storage.from('runmate-avatars').remove([oldPath]);
+    if (removeError) console.error('Old profile photo cleanup failed:', removeError.statusCode || 'unknown');
+  }
+  event.target.reset();
+  status.textContent = 'تم تحديث صورة الحساب.';
+});
+
 async function loadAdminPanel() {
   if (!isAdmin()) return;
   const pendingBox = $('admin-pending-clips');
@@ -451,6 +494,7 @@ $('resend-confirmation-btn').addEventListener('click', async () => {
   }
   showMessage('إذا كان الحساب بحاجة إلى التأكيد، ستصلك رسالة على بريدك الإلكتروني.');
 });
+
 
 
 
