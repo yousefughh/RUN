@@ -7,7 +7,8 @@ const db = supabaseReady ? window.supabase.createClient(SUPABASE_URL, SUPABASE_A
 const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, authListener: false, clips: [] };
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-const isAdmin = () => state.profile?.role === 'admin';
+const isAdmin = () => ['admin', 'owner'].includes(state.profile?.role);
+const isOwner = () => state.profile?.role === 'owner';
 
 function showMessage(message, target = 'auth-message') {
   const el = $(target);
@@ -49,7 +50,7 @@ $('form-register').addEventListener('submit', async e => {
     options: { data: { display_name: name, phone } }
   });
 
-  if (error) { console.error('Signup failed:', error.code || 'unknown'); return showMessage('تعذّر إنشاء الحساب. تحقق من البيانات وحاول مجدداً.'); }
+  if (error) { console.error('Signup failed:', error.code || 'unknown', error.message || ''); return showMessage('تعذّر إنشاء الحساب. أعد المحاولة، وإذا استمر العطل أرسل للدعم رمز الخطأ الظاهر في Console.'); }
 
   if (data.user) {
     if (data.session) {
@@ -117,7 +118,7 @@ async function loadSession(session) {
   $('profile-name').textContent = name;
   $('profile-email').textContent = email;
   $('profile-phone').textContent = phone ? `الهاتف: ${phone}` : '';
-  $('profile-role').textContent = isAdmin() ? 'حساب أدمن' : 'عضو RUNMATE';
+  $('profile-role').textContent = state.profile.role === 'owner' ? 'مالك RUNMATE' : isAdmin() ? 'حساب أدمن' : 'عضو RUNMATE';
 
   document.querySelectorAll('.admin-only').forEach(el => el.hidden = !isAdmin());
 
@@ -165,11 +166,24 @@ function navigateTo(pageId) {
 
 document.addEventListener('click', e => {
   const pageBtn = e.target.closest('[data-page]');
-  if (pageBtn) { e.preventDefault(); navigateTo(pageBtn.dataset.page); }
+  if (pageBtn) {
+    e.preventDefault();
+    navigateTo(pageBtn.dataset.page);
+    $('main-nav').classList.remove('open');
+    $('mobile-menu-toggle').setAttribute('aria-expanded', 'false');
+    document.querySelector('.top-nav').classList.remove('mobile-nav-open');
+  }
   const openBtn = e.target.closest('[data-event]');
   if (openBtn) openModal(openBtn.dataset.event);
   const chatBtn = e.target.closest('[data-chat-run]');
   if (chatBtn) openChat(chatBtn.dataset.chatRun);
+});
+
+$('mobile-menu-toggle').addEventListener('click', () => {
+  const open = $('mobile-menu-toggle').getAttribute('aria-expanded') !== 'true';
+  $('mobile-menu-toggle').setAttribute('aria-expanded', String(open));
+  $('main-nav').classList.toggle('open', open);
+  document.querySelector('.top-nav').classList.toggle('mobile-nav-open', open);
 });
 
 function formatDate(value) {
@@ -486,11 +500,28 @@ async function loadAdminPanel() {
     console.error('Admin users query failed:', usersResult.error.code || 'unknown');
   } else {
     const users = usersResult.data || [];
-    usersBox.innerHTML = users.length ? `<table><thead><tr><th>الاسم</th><th>الدور</th><th>تاريخ الإنشاء</th></tr></thead><tbody>${users.map(user => `<tr><td>${escapeHtml(user.display_name || 'عضو')}</td><td>${user.role === 'admin' ? 'مدير' : 'عضو'}</td><td>${escapeHtml(formatDate(user.created_at))}</td></tr>`).join('')}</tbody></table>` : '<p class="empty-state">لا يوجد مستخدمون.</p>';
+    usersBox.innerHTML = users.length ? `<table><thead><tr><th>الاسم</th><th>الدور</th><th>تاريخ الإنشاء</th>${isOwner() ? '<th>إدارة الدور</th>' : ''}</tr></thead><tbody>${users.map(user => `<tr><td>${escapeHtml(user.display_name || 'عضو')}</td><td>${user.role === 'owner' ? 'مالك' : user.role === 'admin' ? 'مدير' : 'عضو'}</td><td>${escapeHtml(formatDate(user.created_at))}</td>${isOwner() ? `<td><select data-role-choice="${escapeHtml(user.id)}" aria-label="دور ${escapeHtml(user.display_name || 'عضو')}"><option value="member" ${user.role === 'member' ? 'selected' : ''}>عضو</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>أدمن</option><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>مالك</option></select><button class="secondary-btn role-save-btn" type="button" data-save-role="${escapeHtml(user.id)}">حفظ الدور</button></td>` : ''}</tr>`).join('')}</tbody></table>` : '<p class="empty-state">لا يوجد مستخدمون.</p>';
   }
 }
 
 document.addEventListener('click', async event => {
+  const roleButton = event.target.closest('[data-save-role]');
+  if (roleButton) {
+    if (!isOwner()) return toast('إدارة الأدوار متاحة للمالك فقط.');
+    const role = document.querySelector(`[data-role-choice="${CSS.escape(roleButton.dataset.saveRole)}"]`)?.value;
+    if (!role) return toast('اختر دورًا صالحًا.');
+    roleButton.disabled = true;
+    const { error } = await db.rpc('set_profile_role', { target_profile_id: roleButton.dataset.saveRole, requested_role: role });
+    if (error) {
+      roleButton.disabled = false;
+      toast(error.message?.includes('last owner') ? 'لا يمكن إزالة دور آخر مالك.' : 'تعذّر تحديث الدور.');
+      console.error('Role update failed:', error.code || 'unknown', error.message || '');
+      return;
+    }
+    toast('تم تحديث الدور.');
+    await loadAdminPanel();
+    return;
+  }
   const button = event.target.closest('[data-review-clip]');
   if (!button || !isAdmin()) return;
   button.disabled = true;
