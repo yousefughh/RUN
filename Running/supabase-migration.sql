@@ -56,8 +56,8 @@ DECLARE run_record public.runs%ROWTYPE;
 BEGIN
   SELECT * INTO run_record FROM public.runs WHERE id = NEW.run_id;
   IF run_record.run_status = 'previous'
-     OR (run_record.run_status = 'automatic'
-         AND now() >= run_record.starts_at + pg_catalog.make_interval(mins => run_record.duration_minutes)) THEN
+     OR (now() >= run_record.starts_at - interval '30 minutes'
+         AND NEW.user_id <> run_record.created_by) THEN
     RAISE EXCEPTION 'run_closed';
   END IF;
   RETURN NEW;
@@ -67,18 +67,21 @@ DROP TRIGGER IF EXISTS bookings_reject_closed_run ON public.bookings;
 CREATE TRIGGER bookings_reject_closed_run BEFORE INSERT ON public.bookings
 FOR EACH ROW EXECUTE FUNCTION public.prevent_booking_after_run();
 
-CREATE OR REPLACE FUNCTION public.prevent_creator_booking_delete()
+DROP TRIGGER IF EXISTS bookings_keep_creator_registered ON public.bookings;
+DROP FUNCTION IF EXISTS public.prevent_creator_booking_delete();
+
+CREATE OR REPLACE FUNCTION public.reset_run_after_booking_cancel()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM public.runs WHERE id = OLD.run_id AND created_by = OLD.user_id) THEN
-    RAISE EXCEPTION 'organizer_registration_required';
-  END IF;
+  UPDATE public.runs
+  SET run_status = 'automatic'
+  WHERE id = OLD.run_id AND starts_at > now();
   RETURN OLD;
 END;
 $$;
-DROP TRIGGER IF EXISTS bookings_keep_creator_registered ON public.bookings;
-CREATE TRIGGER bookings_keep_creator_registered BEFORE DELETE ON public.bookings
-FOR EACH ROW EXECUTE FUNCTION public.prevent_creator_booking_delete();
+DROP TRIGGER IF EXISTS bookings_reset_run_status_after_delete ON public.bookings;
+CREATE TRIGGER bookings_reset_run_status_after_delete AFTER DELETE ON public.bookings
+FOR EACH ROW EXECUTE FUNCTION public.reset_run_after_booking_cancel();
 
 UPDATE public.runs r SET seats_booked = (
   SELECT COUNT(*)::integer FROM public.bookings b WHERE b.run_id = r.id

@@ -88,8 +88,8 @@ declare run_record public.runs%rowtype;
 begin
   select * into run_record from public.runs where id = new.run_id;
   if run_record.run_status = 'previous'
-     or (run_record.run_status = 'automatic'
-         and now() >= run_record.starts_at + pg_catalog.make_interval(mins => run_record.duration_minutes)) then
+     or (now() >= run_record.starts_at - interval '30 minutes'
+         and new.user_id <> run_record.created_by) then
     raise exception 'run_closed';
   end if;
   return new;
@@ -99,19 +99,21 @@ drop trigger if exists bookings_reject_closed_run on public.bookings;
 create trigger bookings_reject_closed_run
 before insert on public.bookings for each row execute function public.prevent_booking_after_run();
 
--- Keep an organizer's automatic booking in place even if an admin clicks cancel.
-create or replace function public.prevent_creator_booking_delete()
+drop trigger if exists bookings_keep_creator_registered on public.bookings;
+drop function if exists public.prevent_creator_booking_delete();
+
+create or replace function public.reset_run_after_booking_cancel()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
-  if exists (select 1 from public.runs where id = old.run_id and created_by = old.user_id) then
-    raise exception 'organizer_registration_required';
-  end if;
+  update public.runs
+  set run_status = 'automatic'
+  where id = old.run_id and starts_at > now();
   return old;
 end;
 $$;
-drop trigger if exists bookings_keep_creator_registered on public.bookings;
-create trigger bookings_keep_creator_registered
-before delete on public.bookings for each row execute function public.prevent_creator_booking_delete();
+drop trigger if exists bookings_reset_run_status_after_delete on public.bookings;
+create trigger bookings_reset_run_status_after_delete
+after delete on public.bookings for each row execute function public.reset_run_after_booking_cancel();
 
 update public.runs r set seats_booked = (
   select count(*)::integer from public.bookings b where b.run_id = r.id

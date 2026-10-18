@@ -126,31 +126,50 @@ $('form-password-recovery').addEventListener('submit', async event => {
 $('form-register').addEventListener('submit', async e => {
   e.preventDefault();
   if (!db) return showMessage('أضف إعدادات Supabase أولاً.');
+  const form = $('form-register');
+  if (form.dataset.submitting === 'true') return;
 
   const name = $('reg-name').value.trim();
   const email = $('reg-identity').value.trim();
   const password = $('reg-pass').value;
+  const button = form.querySelector('button[type="submit"]');
 
+  form.dataset.submitting = 'true';
+  button.disabled = true;
   showMessage('جارٍ إنشاء الحساب...');
 
-  const { data, error } = await db.auth.signUp({
-    email,
-    password,
-    options: {
-      data: { display_name: name },
-      emailRedirectTo: AUTH_REDIRECT_URL
-    }
-  });
+  try {
+    const { data, error } = await db.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { display_name: name },
+        emailRedirectTo: AUTH_REDIRECT_URL
+      }
+    });
 
-  if (error) { console.error('Signup failed:', error.code || 'unknown', error.message || ''); return showMessage('تعذّر إنشاء الحساب. أعد المحاولة، وإذا استمر العطل أرسل للدعم رمز الخطأ الظاهر في Console.'); }
-
-  if (data.user) {
-    if (data.session) {
-      await loadSession(data.session);
-      toast('تم إنشاء الحساب بنجاح');
-    } else {
-      showMessage('افتح رسالة تأكيد البريد واضغط الرابط؛ سيعود بك إلى الموقع ويسجّل دخولك تلقائيًا.');
+    if (error) {
+      console.error('Signup failed:', error.code || 'unknown');
+      if (error.status === 429 || /rate.?limit|too many requests/i.test(error.message || '')) {
+        return showMessage('وصلنا للحد المؤقت لمحاولات التسجيل أو رسائل التأكيد. انتظر قليلًا ثم حاول مرة أخرى.');
+      }
+      return showMessage('تعذّر إنشاء الحساب. تحقق من البيانات وحاول مرة أخرى.');
     }
+
+    if (data.user) {
+      if (data.session) {
+        await loadSession(data.session);
+        toast('تم إنشاء الحساب بنجاح');
+      } else {
+        showMessage('افتح رسالة تأكيد البريد واضغط الرابط؛ سيعود بك إلى الموقع ويسجّل دخولك تلقائيًا.');
+      }
+    }
+  } catch (error) {
+    console.error('Signup request failed:', error?.name || 'unknown');
+    showMessage('تعذّر الاتصال بخدمة التسجيل. تحقق من الإنترنت وحاول مرة أخرى بعد قليل.');
+  } finally {
+    form.dataset.submitting = 'false';
+    button.disabled = false;
   }
 });
 
@@ -327,20 +346,27 @@ function renderEvents() {
 if ($('search'))$('search').addEventListener('input', renderEvents);
 
 function getRunCategory(run, now = Date.now()) {
-  if (['upcoming', 'current', 'previous'].includes(run.run_status)) return run.run_status;
+  if (run.run_status === 'previous') return 'previous';
   const startsAt = new Date(run.starts_at).getTime();
-  if (!Number.isFinite(startsAt) || now < startsAt) return 'upcoming';
-  const durationMs = Math.max(15, Number(run.duration_minutes) || 90) * 60_000;
-  return now < startsAt + durationMs ? 'current' : 'previous';
+  if (!Number.isFinite(startsAt)) return ['upcoming', 'current'].includes(run.run_status) ? run.run_status : 'upcoming';
+  if (Number.isFinite(startsAt) && now >= startsAt) return 'previous';
+  if (['upcoming', 'current'].includes(run.run_status)) return run.run_status;
+  return 'upcoming';
 }
-setInterval(() => { if (state.events.length) renderEvents(); }, 60_000);
+
+function isBookingClosed(run, now = Date.now()) {
+  const startsAt = new Date(run.starts_at).getTime();
+  return run.run_status === 'previous' || !Number.isFinite(startsAt) || now >= startsAt - 30 * 60_000;
+}
+setInterval(() => { if (state.events.length) renderEvents(); }, 10_000);
 
 function openModal(id) {
   const run = state.events.find(item => item.id === id);
   if (!run) return;
   const booked = state.bookings.some(b => b.id === run.id);
   const remaining = Math.max(0, Number(run.seats_total || 0) - Number(run.seats_booked || 0));
-  const ticketText = remaining === 0 ? 'التذاكر انتهت' : `المقاعد المتبقية: ${remaining}`;
+  const bookingClosed = isBookingClosed(run);
+  const ticketText = remaining === 0 ? 'التذاكر انتهت' : bookingClosed && !booked ? 'انتهى التسجيل قبل موعد الجَرية بنصف ساعة' : `المقاعد المتبقية: ${remaining}`;
 
   $('modal-content').innerHTML = `
     <div class="modal-body">
@@ -351,7 +377,7 @@ function openModal(id) {
       <p>المسافة: ${escapeHtml(run.distance_km)} كم</p>
       <p>${ticketText}</p>
       <p>السعر: ${escapeHtml(run.price || 'مجانية')}</p>
-      <button class="primary-btn" id="book-now-btn" ${!booked && remaining < 1 ? 'disabled' : ''}>${booked ? 'إلغاء الحجز' : remaining < 1 ? 'التذاكر انتهت' : 'حجز مكان الآن'}</button>
+      <button class="primary-btn" id="book-now-btn" ${!booked && (remaining < 1 || bookingClosed) ? 'disabled' : ''}>${booked ? 'إلغاء الحجز' : remaining < 1 ? 'التذاكر انتهت' : bookingClosed ? 'انتهى التسجيل' : 'حجز مكان الآن'}</button>
       ${isAdmin() ? `<label class="run-status-control">حالة الجَرية
         <select id="run-status-choice">
           <option value="automatic" ${run.run_status === 'automatic' ? 'selected' : ''}>تلقائي حسب الموعد</option>
@@ -359,8 +385,6 @@ function openModal(id) {
           <option value="current" ${run.run_status === 'current' ? 'selected' : ''}>حالية يدويًا</option>
           <option value="previous" ${run.run_status === 'previous' ? 'selected' : ''}>سابقة يدويًا</option>
         </select>
-      </label><label class="run-status-control">مدة الجَرية بالدقائق
-        <input id="run-duration-choice" type="number" min="15" max="1440" value="${Math.min(1440, Math.max(15, Number(run.duration_minutes) || 90))}">
       </label><button class="secondary-btn" id="save-run-settings">حفظ حالة الجَرية</button>
         <button class="danger-btn" id="delete-run-btn" type="button">حذف الجَرية نهائيًا</button>` : ''}
     </div>`;
@@ -377,8 +401,13 @@ async function toggleBooking(run, booked) {
   if (booked) {
     const { error } = await db.from('bookings').delete().eq('run_id', run.id).eq('user_id', state.user.id);
     if (error) return toast(error.code === '23505' ? 'أنت مسجل بالفعل في هذه الجَرية.' : 'تعذّر إلغاء الحجز. حاول مرة أخرى.');
+    if (state.activeChatRun === run.id) {
+      state.activeChatRun = null;
+      $('chat-panel').innerHTML = '<p class="empty-state">ألغيت حجزك؛ لم تعد عضوًا في محادثة الجَرية.</p>';
+    }
     toast('تم إلغاء الحجز');
   } else {
+    if (isBookingClosed(run)) return toast('انتهى التسجيل قبل موعد الجَرية بنصف ساعة.');
     const { error } = await db.from('bookings').insert({ run_id: run.id, user_id: state.user.id });
     if (error) return toast(error.message?.includes('full') ? 'التذاكر انتهت.' : error.code === '23505' ? 'أنت مسجل بالفعل في هذه الجَرية.' : 'تعذّر إتمام الحجز. حاول مرة أخرى.');
     toast('تم الحجز بنجاح');
@@ -388,9 +417,7 @@ async function toggleBooking(run, booked) {
 }
 
 async function saveRunSettings(run) {
-  const duration = Number($('run-duration-choice').value);
-  if (!Number.isInteger(duration) || duration < 15 || duration > 1440) return toast('مدة الجَرية لازم تكون من 15 إلى 1440 دقيقة.');
-  const { error } = await db.from('runs').update({ run_status: $('run-status-choice').value, duration_minutes: duration }).eq('id', run.id);
+  const { error } = await db.from('runs').update({ run_status: $('run-status-choice').value }).eq('id', run.id);
   if (error) return toast('تعذّر حفظ حالة الجَرية.');
   $('modal').classList.remove('active');
   await refreshData();
@@ -480,7 +507,6 @@ $('organizer-form').addEventListener('submit', async e => {
     image_url: imageUrl,
     admin_only_chat: false,
     run_status: $('org-status').value,
-    duration_minutes: Number($('org-duration').value),
     organizer_name: state.profile.display_name,
     created_by: state.user.id
   };
@@ -668,6 +694,19 @@ $('profile-photo-form').addEventListener('submit', async event => {
   }
   event.target.reset();
   status.textContent = 'تم تحديث صورة الحساب.';
+});
+
+$('profile-logout-btn').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = 'جارٍ تسجيل الخروج...';
+  const { error } = await db.auth.signOut();
+  if (error) {
+    button.disabled = false;
+    button.textContent = 'تسجيل الخروج';
+    return toast('تعذّر تسجيل الخروج. حاول مرة أخرى.');
+  }
+  location.reload();
 });
 
 async function loadAdminPanel() {

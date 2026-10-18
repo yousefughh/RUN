@@ -140,7 +140,6 @@
             <label>السعر <input type="text" id="org-price" value="مجانية" required></label>
           </div>
           <div class="form-row">
-            <label>مدة الجَرية بالدقائق <input type="number" id="org-duration" value="90" min="15" max="1440" required></label>
             <label>حالة الجَرية
               <select id="org-status" required>
                 <option value="automatic" selected>تلقائي حسب الموعد</option>
@@ -188,6 +187,7 @@
             <button class="primary-btn" type="submit">رفع صورة الحساب</button>
             <p id="profile-photo-status" class="muted-text" aria-live="polite"></p>
           </form>
+          <button class="danger-btn profile-logout-btn" id="profile-logout-btn" type="button">تسجيل الخروج</button>
           <form id="profile-password-form" class="profile-photo-form profile-password-form">
             <h3>تغيير كلمة السر</h3>
             <label for="profile-new-password">كلمة السر الجديدة</label>
