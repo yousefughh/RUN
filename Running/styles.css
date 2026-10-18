@@ -52,6 +52,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .user-menu { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .avatar, .avatar-large { display: grid; place-items: center; border-radius: 50%; background: rgba(255, 94, 58, .16); color: var(--primary); font-weight: 800; border: 1px solid rgba(255, 94, 58, .32); }
 .avatar { width: 36px; height: 36px; }
+.avatar img, .avatar-large img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.avatar-large { overflow: hidden; }
 .logout-btn { padding: 9px 12px; color: var(--text-muted); background: transparent; border: 1px solid var(--border-color); border-radius: 9px; }
 .logout-btn:hover { color: white; border-color: var(--primary); }
 .main-content { width: min(1180px, 100%); margin: 0 auto; padding: 26px clamp(16px, 4vw, 36px) 60px; }
@@ -92,6 +94,9 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .profile-card { max-width: 560px; margin: 20px auto; text-align: center; padding: 32px 24px; border: 1px solid var(--border-color); border-radius: 18px; background: var(--bg-card); }
 .avatar-large { width: 82px; height: 82px; font-size: 30px; margin: 0 auto 15px; }
 .profile-card h3 { font-size: 24px; margin-bottom: 5px; }
+.profile-photo-form { max-width: 360px; margin: 20px auto 0; display: grid; gap: 10px; text-align: right; }
+.profile-photo-form label { color: var(--text-muted); font-size: 14px; }
+.profile-photo-form input { width: 100%; color: var(--text-muted); }
 .role-badge { display: inline-block; margin-top: 14px; border: 1px solid rgba(255, 94, 58, .35); border-radius: 30px; padding: 7px 13px; color: var(--primary); background: rgba(255, 94, 58, .1); font-size: 13px; }
 .chat-container { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 16px; min-height: 460px; }
 .chat-sidebar, .chat-panel { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 14px; min-width: 0; }
@@ -157,3 +162,4 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .admin-users table { width: 100%; border-collapse: collapse; }
 .admin-users th, .admin-users td { text-align: right; padding: .75rem; border-bottom: 1px solid #2b303a; }
 @media (max-width: 700px) { .clips-grid { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: .65rem; } }
+
