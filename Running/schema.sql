@@ -278,6 +278,20 @@ CREATE POLICY "Users delete their own profile photos" ON storage.objects FOR DEL
 USING (bucket_id = 'runmate-avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('runmate-run-images', 'runmate-run-images', true, 5242880, ARRAY['image/jpeg','image/png','image/webp'])
+ON CONFLICT (id) DO UPDATE SET public = true, file_size_limit = EXCLUDED.file_size_limit,
+allowed_mime_types = EXCLUDED.allowed_mime_types;
+DROP POLICY IF EXISTS "Run images are public" ON storage.objects;
+DROP POLICY IF EXISTS "Admins upload run images" ON storage.objects;
+DROP POLICY IF EXISTS "Admins delete run images" ON storage.objects;
+CREATE POLICY "Run images are public" ON storage.objects FOR SELECT TO anon, authenticated
+USING (bucket_id = 'runmate-run-images');
+CREATE POLICY "Admins upload run images" ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'runmate-run-images' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'));
+CREATE POLICY "Admins delete run images" ON storage.objects FOR DELETE TO authenticated
+USING (bucket_id = 'runmate-run-images' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'));
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('runmate-avatars', 'runmate-avatars', true, 5242880, ARRAY['image/jpeg','image/png','image/webp'])
 ON CONFLICT (id) DO UPDATE SET public = true, file_size_limit = EXCLUDED.file_size_limit,
 allowed_mime_types = EXCLUDED.allowed_mime_types;
