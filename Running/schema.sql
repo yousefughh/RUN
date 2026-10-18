@@ -303,7 +303,7 @@ create policy "Users can delete own bookings"
 on public.bookings for delete to authenticated
 using (auth.uid() = user_id or exists (select 1 from public.profiles where id = auth.uid() and role IN ('admin', 'owner')));
 revoke all on table public.bookings from public, anon, authenticated;
-grant select (id, run_id, user_id, created_at) on table public.bookings to authenticated;
+grant select (run_id, user_id) on table public.bookings to authenticated;
 grant insert (run_id, user_id) on table public.bookings to authenticated;
 grant delete on table public.bookings to authenticated;
 
