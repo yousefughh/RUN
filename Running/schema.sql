@@ -36,6 +36,38 @@ create table if not exists public.bookings (
   unique (run_id, user_id)
 );
 
+-- Keep available seats in sync with bookings and reject overbooking.
+-- Keep available seats in sync with bookings and reject overbooking.
+create OR REPLACE FUNCTION public.sync_run_seats_booked()
+returns trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $
+begin
+  IF TG_OP = 'INSERT' THEN
+    update public.runs
+    set seats_booked = seats_booked + 1
+    where id = NEW.run_id AND seats_booked < seats_total;
+    if NOT FOUND THEN RAISE EXCEPTION 'Run is full or has no available seats'; END IF;
+    return NEW;
+  elsif TG_OP = 'DELETE' THEN
+    update public.runs
+    set seats_booked = greatest(seats_booked - 1, 0)
+    where id = OLD.run_id;
+    return OLD;
+  end if;
+  return NULL;
+end;
+$;
+drop TRIGGER IF EXISTS bookings_sync_run_seats_after_insert ON public.bookings;
+drop TRIGGER IF EXISTS bookings_sync_run_seats_after_delete ON public.bookings;
+create TRIGGER bookings_sync_run_seats_after_insert
+after INSERT ON public.bookings FOR EACH ROW
+execute FUNCTION public.sync_run_seats_booked();
+create TRIGGER bookings_sync_run_seats_after_delete
+after DELETE ON public.bookings FOR EACH ROW
+execute FUNCTION public.sync_run_seats_booked();
+update public.runs r SET seats_booked = (
+  select count(*)::integer FROM public.bookings b WHERE b.run_id = r.id
+);
+
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),
   run_id uuid references public.runs on delete cascade not null,
