@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#0f1115">
-  <title>RUNMATE — اجري معنا</title>
+  <title>Stride — اجري معنا</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -16,7 +16,7 @@
   <!-- شاشة التسجيل وتأكيد الدخول -->
   <div class="auth-container" id="auth-screen">
     <div class="auth-box">
-      <div class="auth-brand"><span class="brand-mark">.R</span> RUNMATE<span class="brand-dot">.</span></div>
+      <div class="auth-brand"><span class="brand-mark">S.</span> Stride<span class="brand-dot">.</span></div>
       <p class="auth-note">ادخل لحسابك أو أنشئ حسابًا جديدًا</p>
       
       <div class="auth-tabs">
@@ -58,7 +58,7 @@
   <!-- الواجهة الرئيسية للموقع (تظهر بعد تسجيل الدخول) -->
   <div id="app-shell">
     <header class="top-nav">
-      <div class="brand"><span class="brand-mark">.R</span> RUNMATE</div>
+      <div class="brand"><span class="brand-mark">S.</span> Stride</div>
       <nav class="nav-links" id="main-nav">
         <button data-page="home" class="active">الرئيسية</button>
         <button data-page="clips">Clips</button>
@@ -129,11 +129,19 @@
             <label>عدد المقاعد <input type="number" id="org-seats" value="15" min="1" required></label>
             <label>السعر <input type="text" id="org-price" value="مجانية" required></label>
           </div>
+          <div class="form-row">
+            <label>مدة الجَرية بالدقائق <input type="number" id="org-duration" value="90" min="15" max="1440" required></label>
+            <label>حالة الجَرية
+              <select id="org-status" required>
+                <option value="automatic" selected>تلقائي حسب الموعد</option>
+                <option value="upcoming">قادمة يدويًا</option>
+                <option value="current">حالية يدويًا</option>
+                <option value="previous">سابقة يدويًا</option>
+              </select>
+            </label>
+          </div>
           <label>صورة الجَرية (اختياري، JPG أو PNG أو WebP حتى 5 ميغابايت) <input type="file" id="org-image-file" accept="image/jpeg,image/png,image/webp"></label>
           <label>أو رابط صورة <input type="url" id="org-image" placeholder="https://..."></label>
-          <label class="checkbox-label">
-            <input type="checkbox" id="org-admin-only"> المحادثة للقراءة فقط (الأدمن يتحدث فقط)
-          </label>
           <button class="primary-btn" type="submit">نشر الجَرية</button>
         </form>
       </section>
@@ -163,7 +171,7 @@
           <div class="avatar-large" id="profile-avatar-large">U</div>
           <h3 id="profile-name">اسم المستخدم</h3>
           <p id="profile-email" class="muted-text">email@example.com</p>
-          <span class="role-badge" id="profile-role">عضو RUNMATE</span>
+          <span class="role-badge" id="profile-role">عضو Stride</span>
           <form id="profile-photo-form" class="profile-photo-form">
             <label for="profile-photo-file">صورة الحساب (JPG أو PNG أو WebP، حتى 5 ميغابايت)</label>
             <input id="profile-photo-file" type="file" accept="image/jpeg,image/png,image/webp">
@@ -189,6 +197,7 @@
   <script src="app.js"></script>
 </body>
 </html>
+
 
 
 

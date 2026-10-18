@@ -2,6 +2,12 @@
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone text;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_path text;
 ALTER TABLE public.runs ADD COLUMN IF NOT EXISTS seats_booked integer NOT NULL DEFAULT 0;
+ALTER TABLE public.runs ADD COLUMN IF NOT EXISTS run_status text NOT NULL DEFAULT 'automatic';
+ALTER TABLE public.runs ADD COLUMN IF NOT EXISTS duration_minutes integer NOT NULL DEFAULT 90;
+ALTER TABLE public.runs DROP CONSTRAINT IF EXISTS runs_run_status_check;
+ALTER TABLE public.runs ADD CONSTRAINT runs_run_status_check CHECK (run_status IN ('automatic', 'upcoming', 'current', 'previous'));
+ALTER TABLE public.runs DROP CONSTRAINT IF EXISTS runs_duration_minutes_check;
+ALTER TABLE public.runs ADD CONSTRAINT runs_duration_minutes_check CHECK (duration_minutes BETWEEN 15 AND 1440);
 -- Keep available seats in sync with bookings and reject overbooking.
 CREATE OR REPLACE FUNCTION public.sync_run_seats_booked()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
@@ -29,9 +35,57 @@ EXECUTE FUNCTION public.sync_run_seats_booked();
 CREATE TRIGGER bookings_sync_run_seats_after_delete
 AFTER DELETE ON public.bookings FOR EACH ROW
 EXECUTE FUNCTION public.sync_run_seats_booked();
+
+CREATE OR REPLACE FUNCTION public.register_run_creator()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF NEW.created_by IS NOT NULL THEN
+    INSERT INTO public.bookings (run_id, user_id) VALUES (NEW.id, NEW.created_by)
+    ON CONFLICT (run_id, user_id) DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS runs_register_creator_after_insert ON public.runs;
+CREATE TRIGGER runs_register_creator_after_insert AFTER INSERT ON public.runs
+FOR EACH ROW EXECUTE FUNCTION public.register_run_creator();
+
+CREATE OR REPLACE FUNCTION public.prevent_booking_after_run()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE run_record public.runs%ROWTYPE;
+BEGIN
+  SELECT * INTO run_record FROM public.runs WHERE id = NEW.run_id;
+  IF run_record.run_status = 'previous'
+     OR (run_record.run_status = 'automatic'
+         AND now() >= run_record.starts_at + pg_catalog.make_interval(mins => run_record.duration_minutes)) THEN
+    RAISE EXCEPTION 'run_closed';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS bookings_reject_closed_run ON public.bookings;
+CREATE TRIGGER bookings_reject_closed_run BEFORE INSERT ON public.bookings
+FOR EACH ROW EXECUTE FUNCTION public.prevent_booking_after_run();
+
+CREATE OR REPLACE FUNCTION public.prevent_creator_booking_delete()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.runs WHERE id = OLD.run_id AND created_by = OLD.user_id) THEN
+    RAISE EXCEPTION 'organizer_registration_required';
+  END IF;
+  RETURN OLD;
+END;
+$$;
+DROP TRIGGER IF EXISTS bookings_keep_creator_registered ON public.bookings;
+CREATE TRIGGER bookings_keep_creator_registered BEFORE DELETE ON public.bookings
+FOR EACH ROW EXECUTE FUNCTION public.prevent_creator_booking_delete();
+
 UPDATE public.runs r SET seats_booked = (
   SELECT COUNT(*)::integer FROM public.bookings b WHERE b.run_id = r.id
 );
+CREATE INDEX IF NOT EXISTS idx_runs_starts_at ON public.runs (starts_at);
+CREATE INDEX IF NOT EXISTS idx_bookings_user_created ON public.bookings (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_run_created ON public.messages (run_id, created_at DESC);
 DO $$
 DECLARE c record;
 BEGIN
@@ -87,8 +141,8 @@ GRANT EXECUTE ON FUNCTION public.set_profile_role(uuid, text) TO authenticated;
 
 -- Keep existing phone values in the database but make them unavailable through
 -- the browser API. The public profile fields below are the only ones clients can read.
-REVOKE SELECT, UPDATE ON TABLE public.profiles FROM PUBLIC, anon, authenticated;
-GRANT SELECT (id, display_name, avatar_path, role, created_at) ON TABLE public.profiles TO anon, authenticated;
+REVOKE ALL ON TABLE public.profiles FROM PUBLIC, anon, authenticated;
+GRANT SELECT (id, display_name, avatar_path, role, created_at) ON TABLE public.profiles TO authenticated;
 GRANT UPDATE (display_name, avatar_path) ON TABLE public.profiles TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -142,6 +196,10 @@ WITH CHECK (auth.uid() = user_id AND (storage_path LIKE auth.uid()::text || '/%'
 CREATE POLICY "Admins can review clips" ON public.clips FOR UPDATE TO authenticated
 USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner')))
 WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner')));
+REVOKE ALL ON TABLE public.clips FROM PUBLIC, anon, authenticated;
+GRANT SELECT (id, storage_path, caption, media_type, status, created_at) ON TABLE public.clips TO anon, authenticated;
+GRANT INSERT (user_id, storage_path, caption, media_type, status) ON TABLE public.clips TO authenticated;
+GRANT UPDATE (status, reviewed_at, reviewed_by) ON TABLE public.clips TO authenticated;
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('runmate-clips', 'runmate-clips', false, 52428800,
@@ -165,15 +223,23 @@ USING (bucket_id = 'runmate-clips' AND (storage.foldername(name))[1] = auth.uid(
 CREATE POLICY "Admins manage clip files" ON storage.objects FOR DELETE TO authenticated
 USING (bucket_id = 'runmate-clips' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner')));
 
+CREATE OR REPLACE FUNCTION public.is_admin_or_owner()
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner'));
+$$;
+REVOKE ALL ON FUNCTION public.is_admin_or_owner() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_admin_or_owner() TO authenticated;
+
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES ('runmate-avatars', 'runmate-avatars', true, 5242880, ARRAY['image/jpeg','image/png','image/webp'])
-ON CONFLICT (id) DO UPDATE SET public = true, file_size_limit = EXCLUDED.file_size_limit,
+VALUES ('runmate-avatars', 'runmate-avatars', false, 5242880, ARRAY['image/jpeg','image/png','image/webp'])
+ON CONFLICT (id) DO UPDATE SET public = false, file_size_limit = EXCLUDED.file_size_limit,
 allowed_mime_types = EXCLUDED.allowed_mime_types;
 DROP POLICY IF EXISTS "Profile photos are public" ON storage.objects;
+DROP POLICY IF EXISTS "Profile photos are private to their owner and admins" ON storage.objects;
 DROP POLICY IF EXISTS "Users upload their own profile photos" ON storage.objects;
 DROP POLICY IF EXISTS "Users delete their own profile photos" ON storage.objects;
-CREATE POLICY "Profile photos are public" ON storage.objects FOR SELECT TO anon, authenticated
-USING (bucket_id = 'runmate-avatars');
+CREATE POLICY "Profile photos are private to their owner and admins" ON storage.objects FOR SELECT TO authenticated
+USING (bucket_id = 'runmate-avatars' AND ((storage.foldername(name))[1] = auth.uid()::text OR public.is_admin_or_owner()));
 CREATE POLICY "Users upload their own profile photos" ON storage.objects FOR INSERT TO authenticated
 WITH CHECK (bucket_id = 'runmate-avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
 CREATE POLICY "Users delete their own profile photos" ON storage.objects FOR DELETE TO authenticated
@@ -192,4 +258,91 @@ CREATE POLICY "Admins upload run images" ON storage.objects FOR INSERT TO authen
 WITH CHECK (bucket_id = 'runmate-run-images' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner')));
 CREATE POLICY "Admins delete run images" ON storage.objects FOR DELETE TO authenticated
 USING (bucket_id = 'runmate-run-images' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner')));
+
+-- Restrict personal profile visibility and expose only fields required by the client.
+CREATE OR REPLACE FUNCTION public.is_admin_or_owner()
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner'));
+$$;
+REVOKE ALL ON FUNCTION public.is_admin_or_owner() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_admin_or_owner() TO authenticated;
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+DO $$
+DECLARE p record;
+BEGIN
+  FOR p IN SELECT schemaname, tablename, policyname FROM pg_policies
+    WHERE schemaname = 'public' AND tablename IN ('profiles', 'runs', 'bookings', 'messages')
+  LOOP
+    EXECUTE format('DROP POLICY %I ON %I.%I', p.policyname, p.schemaname, p.tablename);
+  END LOOP;
+END $$;
+DROP POLICY IF EXISTS "Public profiles are viewable by everyone." ON public.profiles;
+DROP POLICY IF EXISTS "Profiles are viewable by authenticated users" ON public.profiles;
+DROP POLICY IF EXISTS "Users see own profile and admins may manage profiles" ON public.profiles;
+CREATE POLICY "Users see own profile and admins may manage profiles" ON public.profiles
+FOR SELECT TO authenticated USING (id = auth.uid() OR public.is_admin_or_owner());
+
+-- Keep auth UUIDs and contact details out of public list responses.
+ALTER TABLE public.runs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Runs are viewable by everyone." ON public.runs;
+DROP POLICY IF EXISTS "Runs are viewable by everyone" ON public.runs;
+DROP POLICY IF EXISTS "Admins can insert runs." ON public.runs;
+DROP POLICY IF EXISTS "Admins can insert runs" ON public.runs;
+DROP POLICY IF EXISTS "Admins can update runs." ON public.runs;
+DROP POLICY IF EXISTS "Admins can update runs" ON public.runs;
+DROP POLICY IF EXISTS "Admins can delete runs." ON public.runs;
+DROP POLICY IF EXISTS "Admins can delete runs" ON public.runs;
+CREATE POLICY "Runs are viewable by authenticated users" ON public.runs
+FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Admins can insert runs" ON public.runs FOR INSERT TO authenticated
+WITH CHECK (public.is_admin_or_owner() AND created_by = auth.uid());
+CREATE POLICY "Admins can update runs" ON public.runs FOR UPDATE TO authenticated
+USING (public.is_admin_or_owner()) WITH CHECK (public.is_admin_or_owner());
+CREATE POLICY "Admins can delete runs" ON public.runs FOR DELETE TO authenticated
+USING (public.is_admin_or_owner());
+REVOKE ALL ON TABLE public.runs FROM PUBLIC, anon, authenticated;
+GRANT SELECT (id, title, starts_at, location, distance_km, seats_total, seats_booked,
+              run_status, duration_minutes, price, image_url, admin_only_chat,
+              created_at) ON TABLE public.runs TO authenticated;
+GRANT INSERT (title, starts_at, location, distance_km, seats_total, price, image_url,
+              admin_only_chat, run_status, duration_minutes, organizer_name, created_by)
+ON TABLE public.runs TO authenticated;
+GRANT UPDATE (run_status, duration_minutes, admin_only_chat) ON TABLE public.runs TO authenticated;
+GRANT DELETE ON TABLE public.runs TO authenticated;
+
+ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Bookings viewable by owner." ON public.bookings;
+DROP POLICY IF EXISTS "Bookings viewable by owner" ON public.bookings;
+DROP POLICY IF EXISTS "Users can insert bookings." ON public.bookings;
+DROP POLICY IF EXISTS "Users can insert bookings" ON public.bookings;
+DROP POLICY IF EXISTS "Users can delete own bookings." ON public.bookings;
+DROP POLICY IF EXISTS "Users can delete own bookings" ON public.bookings;
+CREATE POLICY "Users see own bookings and admins see all" ON public.bookings FOR SELECT TO authenticated
+USING (auth.uid() = user_id OR public.is_admin_or_owner());
+CREATE POLICY "Users can book themselves" ON public.bookings FOR INSERT TO authenticated
+WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users cancel own bookings" ON public.bookings FOR DELETE TO authenticated
+USING (auth.uid() = user_id OR public.is_admin_or_owner());
+REVOKE ALL ON TABLE public.bookings FROM PUBLIC, anon, authenticated;
+GRANT SELECT (id, run_id, user_id, created_at) ON TABLE public.bookings TO authenticated;
+GRANT INSERT (run_id, user_id) ON TABLE public.bookings TO authenticated;
+GRANT DELETE ON TABLE public.bookings TO authenticated;
+
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Messages viewable by bookers or admins." ON public.messages;
+DROP POLICY IF EXISTS "Messages viewable by bookers or admins" ON public.messages;
+DROP POLICY IF EXISTS "Messages insert by authorized users or admins." ON public.messages;
+DROP POLICY IF EXISTS "Messages insert by authorized users or admins" ON public.messages;
+CREATE POLICY "Booked runners can read chat" ON public.messages FOR SELECT TO authenticated
+USING (EXISTS (SELECT 1 FROM public.bookings b WHERE b.run_id = messages.run_id AND b.user_id = auth.uid()) OR public.is_admin_or_owner());
+CREATE POLICY "Authorized runners can send chat messages" ON public.messages FOR INSERT TO authenticated
+WITH CHECK (
+  auth.uid() = user_id AND
+  (EXISTS (SELECT 1 FROM public.bookings b WHERE b.run_id = messages.run_id AND b.user_id = auth.uid()) OR public.is_admin_or_owner()) AND
+  (NOT EXISTS (SELECT 1 FROM public.runs r WHERE r.id = messages.run_id AND r.admin_only_chat) OR public.is_admin_or_owner())
+);
+REVOKE ALL ON TABLE public.messages FROM PUBLIC, anon, authenticated;
+GRANT SELECT (id, run_id, body, created_at) ON TABLE public.messages TO authenticated;
+GRANT INSERT (run_id, user_id, body) ON TABLE public.messages TO authenticated;
+
 
