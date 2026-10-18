@@ -51,10 +51,9 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .nav-links button:hover, .nav-links button.active { color: white; background: rgba(255, 94, 58, .13); }
 .nav-links button.active { box-shadow: inset 0 -2px var(--primary); }
 .user-menu { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.avatar, .avatar-large { display: grid; place-items: center; border-radius: 50%; background: rgba(255, 94, 58, .16); color: var(--primary); font-weight: 800; border: 1px solid rgba(255, 94, 58, .32); }
+.avatar, .avatar-large { position: relative; display: grid; place-items: center; flex: 0 0 auto; aspect-ratio: 1 / 1; overflow: hidden; border-radius: 50%; background: rgba(255, 94, 58, .16); color: var(--primary); font-weight: 800; border: 1px solid rgba(255, 94, 58, .32); }
 .avatar { width: 36px; height: 36px; }
-.avatar img, .avatar-large img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.avatar-large { overflow: hidden; }
+.avatar img, .avatar-large img { display: block; width: 100%; height: 100%; min-width: 100%; min-height: 100%; border-radius: 50%; object-fit: cover; object-position: center; }
 .logout-btn { padding: 9px 12px; color: var(--text-muted); background: transparent; border: 1px solid var(--border-color); border-radius: 9px; }
 .logout-btn:hover { color: white; border-color: var(--primary); }
 .main-content { width: min(1180px, 100%); margin: 0 auto; padding: 26px clamp(16px, 4vw, 36px) 60px; }
@@ -71,8 +70,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .runs-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
 .run-card, .ticket-card { min-width: 0; overflow: hidden; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); transition: transform .2s, border-color .2s; }
 .run-card:hover { transform: translateY(-3px); border-color: #4b535f; }
-.run-image { height: 175px; position: relative; background: var(--bg-input); }
-.run-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.run-image { position: relative; width: 100%; min-width: 0; aspect-ratio: 16 / 9; overflow: hidden; background: var(--bg-input); }
+.run-image img { display: block; width: 100%; height: 100%; max-width: 100%; object-fit: cover; object-position: center; }
 .run-badge { position: absolute; top: 12px; right: 12px; border-radius: 7px; padding: 6px 9px; background: rgba(15, 17, 21, .88); color: #fff; font-size: 12px; }
 .run-info { padding: 17px; }
 .run-org { color: var(--primary); font-size: 12px; margin-bottom: 8px; }
@@ -140,7 +139,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   .brand { font-size: 19px; }
   .main-content { padding: 20px 14px 40px; }
   .runs-grid, .tickets-list { grid-template-columns: 1fr; }
-  .run-image { height: 190px; }
+  .run-image { aspect-ratio: 4 / 3; }
+  .run-image img { object-fit: contain; }
   .form-row { grid-template-columns: 1fr; }
   .form-card { padding: 17px; }
   .chat-container { grid-template-columns: 1fr; }
