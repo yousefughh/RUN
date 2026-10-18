@@ -4,7 +4,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_H54WIGq4spz51QFkSjmR8w_ohdXdv90';
 const supabaseReady = SUPABASE_URL.startsWith('https://') && !SUPABASE_URL.includes('YOUR_');
 const db = supabaseReady ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null };
+const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, authListener: false, clips: [] };
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const isAdmin = () => state.profile?.role === 'admin';
@@ -36,7 +36,9 @@ $('form-register').addEventListener('submit', async e => {
 
   const name = $('reg-name').value.trim();
   const email = $('reg-identity').value.trim();
-  const phone = $('reg-phone')?.value.trim() || '';
+  const rawPhone = $('reg-phone')?.value.trim() || '';
+  const phone = rawPhone.replace(/[()\s-]/g, '');
+  if (rawPhone && !/^\+?[1-9]\d{6,14}$/.test(phone)) return showMessage('أدخل رقم هاتف صحيحاً بصيغة دولية، أو اترك الحقل فارغاً.');
   const password = $('reg-pass').value;
 
   showMessage('جارٍ إنشاء الحساب...');
@@ -47,18 +49,9 @@ $('form-register').addEventListener('submit', async e => {
     options: { data: { display_name: name, phone } }
   });
 
-  if (error) return showMessage(error.message);
+  if (error) { console.error('Signup failed:', error.code || 'unknown'); return showMessage('تعذّر إنشاء الحساب. تحقق من البيانات وحاول مجدداً.'); }
 
   if (data.user) {
-    const { error: profileError } = await db.from('profiles').upsert({
-      id: data.user.id,
-      display_name: name,
-      phone: phone,
-      role: 'member'
-    }, { onConflict: 'id' });
-
-    if (profileError) console.error('خطأ في حفظ البروفايل:', profileError.message);
-
     if (data.session) {
       await loadSession(data.session);
       toast('تم إنشاء الحساب بنجاح');
@@ -79,7 +72,7 @@ $('form-login').addEventListener('submit', async e => {
   showMessage('جارٍ تسجيل الدخول...');
   const result = await db.auth.signInWithPassword({ email, password });
 
-  if (result.error) return showMessage(result.error.message);
+  if (result.error) { console.error('Login failed:', result.error.code || 'unknown'); return showMessage(result.error.code === 'email_not_confirmed' ? 'يجب تأكيد بريدك أولاً. أعد إرسال رسالة التأكيد من الزر أدناه.' : 'تعذّر تسجيل الدخول. تحقق من البريد وكلمة المرور.'); }
   await loadSession(result.data.session);
 });
 
@@ -94,8 +87,8 @@ $('forgot-pass-btn').addEventListener('click', async () => {
   const { error } = await db.auth.resetPasswordForEmail(email, {
     redirectTo: window.location.href,
   });
-  if (error) return showMessage(error.message);
-  toast('تم إرسال رابط إعادة تعيين كلمة السر إلى إيميلك');
+  if (error) { console.error('Password reset request failed:', error.code || 'unknown'); return showMessage('تعذّر إرسال رابط إعادة التعيين. حاول مجدداً لاحقاً.'); }
+  toast('تم إرسال رابط إعادة تعيين كلمة السر إلى بريدك الإلكتروني.');
 });
 
 /* تحميل الجلسة وتحميل البيانات */
@@ -104,23 +97,8 @@ async function loadSession(session) {
   let { data: profile, error } = await db.from('profiles').select('*').eq('id', state.user.id).single();
 
   if (error || !profile) {
-    const fallbackName = state.user.user_metadata?.display_name || state.user.email?.split('@')[0] || 'مستخدم RUNMATE';
-    const fallbackPhone = state.user.user_metadata?.phone || '';
-    const { error: saveError } = await db.from('profiles').upsert({
-      id: state.user.id, display_name: fallbackName, phone: fallbackPhone, role: 'member'
-    }, { onConflict: 'id' });
-    if (saveError) {
-      showMessage('تعذر تحميل الملف الشخصي. راجع تنفيذ schema.sql وصلاحيات profiles في Supabase.');
-      console.error('تعذر إنشاء الملف الشخصي:', saveError.message);
-      return;
-    }
-    const retry = await db.from('profiles').select('*').eq('id', state.user.id).single();
-    profile = retry.data;
-    error = retry.error;
-  }
-
-  if (error || !profile) {
-    showMessage('تعذر تحميل الملف الشخصي. راجع قواعد Supabase.');
+    showMessage('تعذّر العثور على ملف الحساب. طبّق supabase-migration.sql في مشروع Supabase ثم سجّل الدخول مجدداً.');
+    console.error('Profile lookup failed:', error?.code || 'profile missing');
     return;
   }
 
@@ -144,9 +122,12 @@ async function loadSession(session) {
   await refreshData();
   navigateTo('home');
 
-  db.auth.onAuthStateChange((event, currentSession) => {
-    if (event === 'SIGNED_OUT' || !currentSession) location.reload();
-  });
+  if (!state.authListener) {
+    state.authListener = true;
+    db.auth.onAuthStateChange((event, currentSession) => {
+      if (event === 'SIGNED_OUT' || !currentSession) location.reload();
+    });
+  }
 }
 
 async function refreshData() {
@@ -165,17 +146,19 @@ async function refreshData() {
 }
 
 function navigateTo(pageId) {
-  if (pageId === 'organizer' && !isAdmin()) {
+  if ((pageId === 'organizer' || pageId === 'admin') && !isAdmin()) {
     toast('إنشاء الجريات متاح للأدمن فقط');
     return;
   }
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${pageId}`));
   document.querySelectorAll('[data-page]').forEach(item => item.classList.toggle('active', item.dataset.page === pageId));
   
-  const names = { home: 'الرئيسية', explore: 'اكتشف', tickets: 'حجوزاتي', chats: 'المحادثات', profile: 'حسابي', organizer: 'إدارة الجريات' };
+  const names = { clips: 'Clips', admin: 'Admin', home: 'الرئيسية', tickets: 'حجوزاتي', chats: 'المحادثات', profile: 'حسابي', organizer: 'إدارة الجريات' };
   $('crumb-active').textContent = names[pageId] || 'RUNMATE';
 
   if (pageId === 'chats') renderChatsList();
+  if (pageId === 'clips') loadClips();
+  if (pageId === 'admin') loadAdminPanel();
 }
 
 document.addEventListener('click', e => {
@@ -196,7 +179,7 @@ function formatDate(value) {
 function createRunCard(run) {
   const seats = Math.max(0, Number(run.seats_total || 0) - Number(run.seats_booked || 0));
   return `<article class="run-card">
-    <div class="run-image"><img src="${escapeHtml(run.image_url || 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=600&auto=format&fit=crop&q=80')}" alt=""><span class="run-badge">${seats} مقعد متاح</span></div>
+    <div class="run-image"><img loading="lazy" decoding="async" src="${escapeHtml(run.image_url || 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=600&auto=format&fit=crop&q=80')}" alt=""><span class="run-badge">${seats} مقعد متاح</span></div>
     <div class="run-info"><div class="run-org">✦ ${escapeHtml(run.organizer_name || 'RUNMATE')}</div>
     <h3>${escapeHtml(run.title)}</h3><div class="run-detail"><span>◷ ${escapeHtml(formatDate(run.starts_at))}</span><span>⌖ ${escapeHtml(run.location)} · ${escapeHtml(run.distance_km)} كم</span></div>
     <div class="run-foot"><div class="run-price">${escapeHtml(run.price || 'مجانية')}</div><button class="run-open" data-event="${escapeHtml(run.id)}">التفاصيل ↙</button></div></div></article>`;
@@ -206,8 +189,7 @@ function renderEvents() {
   const query = ($('search')?.value || '').trim().toLowerCase();
   const list = state.events.filter(run => `${run.title} ${run.location}`.toLowerCase().includes(query));
 
-  $('home-runs').innerHTML = state.events.length ? state.events.map(createRunCard).join('') : '<p class="empty-state">لا توجد جريات قادمة حاليًا.</p>';
-  $('explore-runs').innerHTML = list.length ? list.map(createRunCard).join('') : '<p class="empty-state">لا توجد جريات تطابق بحثك.</p>';
+  $('home-runs').innerHTML = list.length ? list.map(createRunCard).join('') : '<p class="empty-state">لا توجد جريات تطابق بحثك.</p>';
   $('ticket-count').textContent = state.bookings.length;
   $('ticket-list').innerHTML = state.bookings.length ? state.bookings.map(run => `<div class="ticket-card"><div class="ticket-body"><h3>${escapeHtml(run.title)}</h3><p class="muted-text">${escapeHtml(formatDate(run.starts_at))} · ${escapeHtml(run.location)}</p><button class="primary-btn" data-chat-run="${escapeHtml(run.id)}" data-page="chats">افتح المحادثة</button></div></div>`).join('') : '<p class="empty-state">لم تحجز أي جَرية حتى الآن.</p>';
 }
@@ -287,7 +269,7 @@ $('organizer-form').addEventListener('submit', async e => {
 
   $('organizer-form').reset();
   await refreshData();
-  navigateTo('explore');
+  navigateTo('home');
   toast('تم إنشاء الجَرية بنجاح');
 });
 
@@ -354,3 +336,123 @@ async function startApp() {
   if (session) await loadSession(session);
 }
 startApp();
+
+async function loadClips() {
+  const box = $('clips-list');
+  if (!box || !state.user) return;
+  box.innerHTML = '<p class="empty-state">جارٍ تحميل Clips...</p>';
+  const { data, error } = await db.from('clips').select('id,user_id,storage_path,caption,media_type,status,created_at').order('created_at', { ascending: false }).limit(60);
+  if (error) {
+    box.innerHTML = '<p class="empty-state">تعذّر تحميل المقاطع. حاول مجدداً لاحقاً.</p>';
+    console.error('Clips query failed:', error.code || 'unknown');
+    return;
+  }
+  state.clips = data || [];
+  const signed = await Promise.all(state.clips.map(async clip => {
+    const { data: urlData, error: urlError } = await db.storage.from('runmate-clips').createSignedUrl(clip.storage_path, 900);
+    if (urlError) console.error('Clip URL unavailable:', urlError.statusCode || 'unknown');
+    return { ...clip, signedUrl: urlData?.signedUrl || '' };
+  }));
+  box.innerHTML = signed.length ? signed.map(clip => clipCard(clip, false)).join('') : '<p class="empty-state">لا توجد مقاطع بعد. شارك أول لحظة جري!</p>';
+}
+
+function clipCard(clip, reviewMode) {
+  const media = clip.signedUrl ? (clip.media_type === 'video'
+    ? `<video src="${escapeHtml(clip.signedUrl)}" controls preload="metadata" playsinline></video>`
+    : `<img src="${escapeHtml(clip.signedUrl)}" alt="مقطع من مجتمع RUNMATE" loading="lazy">`) : '<div class="empty-state">تعذّر تحميل الملف</div>';
+  const status = `<span class="clip-status ${escapeHtml(clip.status)}">${clip.status === 'pending' ? 'قيد المراجعة' : clip.status === 'approved' ? 'مقبول' : 'مرفوض'}</span>`;
+  const actions = reviewMode && clip.status === 'pending' ? `<div class="clip-actions"><button class="primary-btn" data-review-clip="${escapeHtml(clip.id)}" data-status="approved">قبول</button><button class="secondary-btn" data-review-clip="${escapeHtml(clip.id)}" data-status="rejected">رفض</button></div>` : '';
+  return `<article class="clip-card">${media}<div class="clip-card-body">${status}<p>${escapeHtml(clip.caption || '')}</p><small>${escapeHtml(formatDate(clip.created_at))}</small>${actions}</div></article>`;
+}
+
+$('clip-upload-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const file = $('clip-file').files?.[0];
+  const status = $('clip-upload-status');
+  const accepted = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime'];
+  if (!file || !accepted.includes(file.type)) return status.textContent = 'اختر صورة JPG أو PNG أو WebP، أو فيديو MP4 أو WebM أو MOV.';
+  if (file.size > 50 * 1024 * 1024) return status.textContent = 'يجب ألا يتجاوز حجم الملف 50 ميغابايت.';
+  const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
+  const path = `${state.user.id}/${crypto.randomUUID()}.${file.name.split('.').pop().toLowerCase()}`;
+  const caption = $('clip-caption').value.trim();
+  status.textContent = 'جارٍ رفع الملف...';
+  const { error: uploadError } = await db.storage.from('runmate-clips').upload(path, file, { contentType: file.type, upsert: false });
+  if (uploadError) {
+    status.textContent = 'تعذّر رفع الملف. تحقق من إعداد Supabase وحاول مجدداً.';
+    console.error('Clip upload failed:', uploadError.statusCode || 'unknown');
+    return;
+  }
+  const { error: insertError } = await db.from('clips').insert({ user_id: state.user.id, storage_path: path, caption, media_type: mediaType, status: 'pending' });
+  if (insertError) {
+    const { error: cleanupError } = await db.storage.from('runmate-clips').remove([path]);
+    status.textContent = 'تعذّر إرسال الملف للمراجعة. أُلغيت عملية الرفع.';
+    console.error('Clip record insert failed:', insertError.code || 'unknown', cleanupError ? 'Storage cleanup failed' : '');
+    return;
+  }
+  event.target.reset();
+  status.textContent = 'تم الإرسال. سيظهر المقطع بعد مراجعة الإدارة.';
+  await loadClips();
+});
+
+async function loadAdminPanel() {
+  if (!isAdmin()) return;
+  const pendingBox = $('admin-pending-clips');
+  const usersBox = $('admin-users');
+  pendingBox.innerHTML = '<p class="empty-state">جارٍ التحميل...</p>';
+  usersBox.innerHTML = '<p class="empty-state">جارٍ التحميل...</p>';
+  const [clipsResult, usersResult] = await Promise.all([
+    db.from('clips').select('id,user_id,storage_path,caption,media_type,status,created_at').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
+    db.from('profiles').select('id,display_name,role,created_at').order('created_at', { ascending: false }).limit(100)
+  ]);
+  if (clipsResult.error) {
+    pendingBox.innerHTML = '<p class="empty-state">تعذّر تحميل قائمة المراجعة.</p>';
+    console.error('Admin clips query failed:', clipsResult.error.code || 'unknown');
+  } else {
+    const reviewClips = await Promise.all((clipsResult.data || []).map(async clip => {
+      const { data } = await db.storage.from('runmate-clips').createSignedUrl(clip.storage_path, 900);
+      return { ...clip, signedUrl: data?.signedUrl || '' };
+    }));
+    pendingBox.innerHTML = reviewClips.length ? reviewClips.map(clip => clipCard(clip, true)).join('') : '<p class="empty-state">لا توجد مقاطع معلّقة.</p>';
+  }
+  if (usersResult.error) {
+    usersBox.innerHTML = '<p class="empty-state">تعذّر تحميل المستخدمين.</p>';
+    console.error('Admin users query failed:', usersResult.error.code || 'unknown');
+  } else {
+    const users = usersResult.data || [];
+    usersBox.innerHTML = users.length ? `<table><thead><tr><th>الاسم</th><th>الدور</th><th>تاريخ الإنشاء</th></tr></thead><tbody>${users.map(user => `<tr><td>${escapeHtml(user.display_name || 'عضو')}</td><td>${user.role === 'admin' ? 'مدير' : 'عضو'}</td><td>${escapeHtml(formatDate(user.created_at))}</td></tr>`).join('')}</tbody></table>` : '<p class="empty-state">لا يوجد مستخدمون.</p>';
+  }
+}
+
+document.addEventListener('click', async event => {
+  const button = event.target.closest('[data-review-clip]');
+  if (!button || !isAdmin()) return;
+  button.disabled = true;
+  const { error } = await db.from('clips').update({ status: button.dataset.status, reviewed_at: new Date().toISOString(), reviewed_by: state.user.id }).eq('id', button.dataset.reviewClip).eq('status', 'pending');
+  if (error) {
+    button.disabled = false;
+    toast('تعذّر تحديث حالة المقطع.');
+    console.error('Clip review failed:', error.code || 'unknown');
+    return;
+  }
+  toast(button.dataset.status === 'approved' ? 'تم قبول المقطع.' : 'تم رفض المقطع.');
+  await loadAdminPanel();
+});
+
+
+$('resend-confirmation-btn').addEventListener('click', async () => {
+  if (!db) return showMessage('إعدادات Supabase غير مكتملة.');
+  const email = $('reg-identity').value.trim() || $('login-identity').value.trim();
+  if (!email || !email.includes('@')) return showMessage('أدخل بريدك الإلكتروني في نموذج التسجيل أو الدخول أولاً.');
+  showMessage('جارٍ إرسال رسالة التأكيد...');
+  const { error } = await db.auth.resend({ type: 'signup', email });
+  if (error) {
+    console.error('Confirmation resend failed:', error.code || 'unknown');
+    return showMessage('تعذّر إرسال رسالة التأكيد. تحقق من البريد وحاول مجدداً لاحقاً.');
+  }
+  showMessage('إذا كان الحساب بحاجة إلى التأكيد، ستصلك رسالة على بريدك الإلكتروني.');
+});
+
+
+
+
+
