@@ -89,7 +89,7 @@ UPDATE public.runs r SET seats_booked = (
 CREATE INDEX IF NOT EXISTS idx_runs_starts_at ON public.runs (starts_at);
 CREATE INDEX IF NOT EXISTS idx_bookings_user_created ON public.bookings (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_run_created ON public.messages (run_id, created_at DESC);
-DO $$
+DO $realtime$$
 DECLARE c record;
 BEGIN
   FOR c IN SELECT conname FROM pg_constraint
@@ -393,4 +393,19 @@ REVOKE ALL ON TABLE public.messages FROM PUBLIC, anon, authenticated;
 GRANT SELECT (id, run_id, body, created_at) ON TABLE public.messages TO authenticated;
 GRANT INSERT (run_id, user_id, body) ON TABLE public.messages TO authenticated;
 
-
+-- Enable live chat updates for the browser's filtered INSERT subscription.
+DO '
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = ''supabase_realtime'')
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_publication_tables
+       WHERE pubname = ''supabase_realtime''
+         AND schemaname = ''public''
+         AND tablename = ''messages''
+     ) THEN
+    EXECUTE ''ALTER PUBLICATION supabase_realtime ADD TABLE public.messages'';
+  ELSIF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = ''supabase_realtime'') THEN
+    RAISE NOTICE ''supabase_realtime publication is missing; enable Realtime for public.messages in Supabase.'';
+  END IF;
+END;
+';
