@@ -89,7 +89,7 @@ UPDATE public.runs r SET seats_booked = (
 CREATE INDEX IF NOT EXISTS idx_runs_starts_at ON public.runs (starts_at);
 CREATE INDEX IF NOT EXISTS idx_bookings_user_created ON public.bookings (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_run_created ON public.messages (run_id, created_at DESC);
-DO $$
+DO $realtime$$
 DECLARE c record;
 BEGIN
   FOR c IN SELECT conname FROM pg_constraint
@@ -407,6 +407,6 @@ BEGIN
   ELSIF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
     RAISE NOTICE 'supabase_realtime publication is missing; enable Realtime for public.messages in Supabase.';
   END IF;
-END $;
+END $realtime$;
 
 
