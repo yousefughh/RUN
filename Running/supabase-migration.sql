@@ -1,5 +1,6 @@
 -- RUNMATE compatibility and Clips migration. Safe to re-run; preserves users and existing profiles.
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_path text;
 DO $$
 DECLARE c record;
 BEGIN
@@ -88,4 +89,19 @@ CREATE POLICY "Users delete their orphan clip uploads" ON storage.objects FOR DE
 USING (bucket_id = 'runmate-clips' AND (storage.foldername(name))[1] = auth.uid()::text AND NOT EXISTS (SELECT 1 FROM public.clips c WHERE c.storage_path = name));
 CREATE POLICY "Admins manage clip files" ON storage.objects FOR DELETE TO authenticated
 USING (bucket_id = 'runmate-clips' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'));
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('runmate-avatars', 'runmate-avatars', true, 5242880, ARRAY['image/jpeg','image/png','image/webp'])
+ON CONFLICT (id) DO UPDATE SET public = true, file_size_limit = EXCLUDED.file_size_limit,
+allowed_mime_types = EXCLUDED.allowed_mime_types;
+DROP POLICY IF EXISTS "Profile photos are public" ON storage.objects;
+DROP POLICY IF EXISTS "Users upload their own profile photos" ON storage.objects;
+DROP POLICY IF EXISTS "Users delete their own profile photos" ON storage.objects;
+CREATE POLICY "Profile photos are public" ON storage.objects FOR SELECT TO anon, authenticated
+USING (bucket_id = 'runmate-avatars');
+CREATE POLICY "Users upload their own profile photos" ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'runmate-avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
+CREATE POLICY "Users delete their own profile photos" ON storage.objects FOR DELETE TO authenticated
+USING (bucket_id = 'runmate-avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
+
 
