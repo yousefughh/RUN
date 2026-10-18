@@ -50,6 +50,16 @@
         <button class="primary-btn" type="submit">إنشاء الحساب</button>
       </form>
 
+      <form class="auth-form" id="form-password-recovery" hidden>
+        <label>كلمة السر الجديدة
+          <input type="password" id="recovery-password" autocomplete="new-password" minlength="8" required placeholder="8 أحرف على الأقل">
+        </label>
+        <label>تأكيد كلمة السر الجديدة
+          <input type="password" id="recovery-password-confirm" autocomplete="new-password" minlength="8" required placeholder="أعد كتابة كلمة السر">
+        </label>
+        <button class="primary-btn" type="submit">حفظ كلمة السر الجديدة</button>
+      </form>
+
       <button type="button" id="resend-confirmation-btn" class="text-link-btn">إعادة إرسال رسالة تأكيد البريد</button>
       <p id="auth-message"></p>
     </div>
@@ -177,6 +187,15 @@
             <input id="profile-photo-file" type="file" accept="image/jpeg,image/png,image/webp">
             <button class="primary-btn" type="submit">رفع صورة الحساب</button>
             <p id="profile-photo-status" class="muted-text" aria-live="polite"></p>
+          </form>
+          <form id="profile-password-form" class="profile-photo-form profile-password-form">
+            <h3>تغيير كلمة السر</h3>
+            <label for="profile-new-password">كلمة السر الجديدة</label>
+            <input id="profile-new-password" type="password" autocomplete="new-password" minlength="8" required placeholder="8 أحرف على الأقل">
+            <label for="profile-confirm-password">تأكيد كلمة السر الجديدة</label>
+            <input id="profile-confirm-password" type="password" autocomplete="new-password" minlength="8" required placeholder="أعد كتابة كلمة السر">
+            <button class="primary-btn" type="submit">تغيير كلمة السر</button>
+            <p id="profile-password-status" class="muted-text" aria-live="polite"></p>
           </form>
         </div>
       </section>

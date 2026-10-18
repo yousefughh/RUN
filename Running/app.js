@@ -5,7 +5,7 @@ const AUTH_REDIRECT_URL = 'https://yousefughh.github.io/RUN/';
 const supabaseReady = SUPABASE_URL.startsWith('https://') && !SUPABASE_URL.includes('YOUR_');
 const db = supabaseReady ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, authListener: false, loadingSessionUserId: null, clips: [] };
+const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, authListener: false, loadingSessionUserId: null, clips: [], passwordRecovery: new URLSearchParams(location.hash.slice(1)).get('type') === 'recovery' };
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const isAdmin = () => ['admin', 'owner'].includes(state.profile?.role);
@@ -39,6 +39,45 @@ function setAuthTab(tab) {
   showMessage('');
 }
 $('tab-login').addEventListener('click', () => setAuthTab('login'));$('tab-register').addEventListener('click', () => setAuthTab('register'));
+
+function showPasswordRecovery() {
+  state.passwordRecovery = true;
+  $('auth-screen').style.display = 'flex';
+  $('app-shell').classList.remove('authenticated');
+  document.querySelector('.auth-tabs').hidden = true;
+  $('form-login').hidden = true;
+  $('form-register').hidden = true;
+  $('resend-confirmation-btn').hidden = true;
+  $('form-password-recovery').hidden = false;
+  $('auth-screen').querySelector('.auth-note').textContent = 'استعادة كلمة السر';
+  $('auth-message').textContent = 'اختار كلمة سر جديدة لا تقل عن 8 أحرف.';
+}
+
+$('form-password-recovery').addEventListener('submit', async event => {
+  event.preventDefault();
+  const password = $('recovery-password').value;
+  if (password.length < 8) return showMessage('كلمة السر لازم تكون 8 أحرف على الأقل.');
+  if (password !== $('recovery-password-confirm').value) return showMessage('كلمتا السر غير متطابقتين.');
+
+  const button = $('form-password-recovery').querySelector('button[type="submit"]');
+  button.disabled = true;
+  showMessage('جارٍ حفظ كلمة السر الجديدة...');
+  const { error } = await db.auth.updateUser({ password });
+  button.disabled = false;
+  if (error) {
+    console.error('Password recovery update failed:', error.code || 'unknown');
+    return showMessage('تعذّر تغيير كلمة السر. افتح أحدث رابط استعادة وصلك عبر البريد ثم حاول مرة أخرى.');
+  }
+
+  state.passwordRecovery = false;
+  $('recovery-password').value = '';
+  $('recovery-password-confirm').value = '';
+  $('form-password-recovery').hidden = true;
+  $('auth-screen').style.display = 'none';
+  const { data: { session } } = await db.auth.getSession();
+  if (session) await loadSession(session);
+  toast('تم تغيير كلمة السر بنجاح.');
+});
 
 /* إنشاء حساب جديد */
 $('form-register').addEventListener('submit', async e => {
@@ -95,11 +134,37 @@ $('forgot-pass-btn').addEventListener('click', async () => {
     return showMessage('يرجى إدخال البريد الإلكتروني في خانة تسجيل الدخول أولاً.');
   }
   showMessage('جارٍ إرسال رابط استعادة كلمة السر...');
+  const button = $('forgot-pass-btn');
+  button.disabled = true;
   const { error } = await db.auth.resetPasswordForEmail(email, {
     redirectTo: AUTH_REDIRECT_URL,
   });
-  if (error) { console.error('Password reset request failed:', error.code || 'unknown'); return showMessage('تعذّر إرسال رابط إعادة التعيين. حاول مجدداً لاحقاً.'); }
-  toast('تم إرسال رابط إعادة تعيين كلمة السر إلى بريدك الإلكتروني.');
+  button.disabled = false;
+  if (error) { console.error('Password reset request failed:', error.code || 'unknown'); return showMessage('تعذّر إرسال رابط إعادة التعيين. تأكد أن رابط الموقع مضاف في Supabase ثم حاول مجدداً.'); }
+  showMessage('لو البريد مسجل في الموقع، هتوصلك رسالة استعادة. افتح أحدث رسالة واضغط الرابط خلال صلاحيته.');
+});
+
+$('profile-password-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const password = $('profile-new-password').value;
+  const confirmPassword = $('profile-confirm-password').value;
+  const status = $('profile-password-status');
+  if (password.length < 8) return status.textContent = 'كلمة السر لازم تكون 8 أحرف على الأقل.';
+  if (password !== confirmPassword) return status.textContent = 'كلمتا السر غير متطابقتين.';
+
+  const button = $('profile-password-form').querySelector('button[type="submit"]');
+  button.disabled = true;
+  status.textContent = 'جارٍ تغيير كلمة السر...';
+  const { error } = await db.auth.updateUser({ password });
+  button.disabled = false;
+  if (error) {
+    console.error('Password change failed:', error.code || 'unknown');
+    status.textContent = 'تعذّر تغيير كلمة السر. سجّل الدخول من جديد ثم حاول مرة أخرى.';
+    return;
+  }
+
+  $('profile-password-form').reset();
+  status.textContent = 'تم تغيير كلمة السر بنجاح.';
 });
 
 /* تحميل الجلسة وتحميل البيانات */
@@ -450,12 +515,14 @@ async function startApp() {
   if (!state.authListener) {
     state.authListener = true;
     db.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) setTimeout(() => loadSession(session), 0);
+      if (event === 'PASSWORD_RECOVERY') showPasswordRecovery();
+      if (event === 'SIGNED_IN' && session && !state.passwordRecovery) setTimeout(() => loadSession(session), 0);
       if (event === 'SIGNED_OUT') location.reload();
     });
   }
   const { data: { session } } = await db.auth.getSession();
-  if (session) await loadSession(session);
+  if (state.passwordRecovery) showPasswordRecovery();
+  else if (session) await loadSession(session);
 }
 startApp();
 

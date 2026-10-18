@@ -100,6 +100,8 @@ button.avatar { padding: 0; cursor: pointer; }
 .profile-card { max-width: 560px; margin: 20px auto; text-align: center; padding: 32px 24px; border: 1px solid var(--border-color); border-radius: 18px; background: var(--bg-card); }
 .profile-card h3 { font-size: 24px; margin-bottom: 5px; }
 .profile-photo-form { max-width: 360px; margin: 20px auto 0; display: grid; gap: 10px; text-align: right; }
+.profile-password-form { padding-top: 20px; border-top: 1px solid var(--border-color); }
+.profile-password-form h3 { margin-bottom: 4px; }
 .profile-photo-form label { color: var(--text-muted); font-size: 14px; }
 .profile-photo-form input { width: 100%; color: var(--text-muted); }
 .role-badge { display: inline-block; margin-top: 14px; border: 1px solid rgba(255, 94, 58, .35); border-radius: 30px; padding: 7px 13px; color: var(--primary); background: rgba(255, 94, 58, .1); font-size: 13px; }
