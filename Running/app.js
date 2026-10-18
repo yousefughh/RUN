@@ -140,8 +140,8 @@ async function loadSession(session) {
 
 async function refreshData() {
   const [eventsRes, bookingsRes] = await Promise.all([
-    db.from('runs').select('id,title,starts_at,location,distance_km,seats_total,seats_booked,run_status,duration_minutes,price,image_url,admin_only_chat,organizer_name,created_at').order('starts_at', { ascending: true }),
-    db.from('bookings').select('run_id, runs(id,title,starts_at,location,distance_km,seats_total,seats_booked,run_status,duration_minutes,price,image_url,admin_only_chat,organizer_name,created_at)').eq('user_id', state.user.id)
+    db.from('runs').select('id,title,starts_at,location,distance_km,seats_total,seats_booked,run_status,duration_minutes,price,image_url,admin_only_chat,created_at').order('starts_at', { ascending: true }),
+    db.from('bookings').select('run_id, runs(id,title,starts_at,location,distance_km,seats_total,seats_booked,run_status,duration_minutes,price,image_url,admin_only_chat,created_at)').eq('user_id', state.user.id)
   ]);
 
   if (eventsRes.error) return toast('تعذر تحميل الجريات: ' + eventsRes.error.message);
@@ -193,7 +193,7 @@ function createRunCard(run) {
   const seatText = seats === 0 ? 'التذاكر انتهت' : `${seats} تذكرة متاحة`;
   return `<article class="run-card">
     <div class="run-image"><img loading="lazy" decoding="async" src="${escapeHtml(run.image_url || 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=600&auto=format&fit=crop&q=80')}" alt=""><span class="run-badge ${seats === 0 ? 'sold-out' : ''}">${seatText}</span></div>
-    <div class="run-info"><div class="run-org">✦ ${escapeHtml(run.organizer_name || 'Stride')}</div>
+    <div class="run-info"><div class="run-org">✦ منظّم من Stride</div>
     <h3>${escapeHtml(run.title)}</h3><div class="run-detail"><span>◷ ${escapeHtml(formatDate(run.starts_at))}</span><span>⌖ ${escapeHtml(run.location)} · ${escapeHtml(run.distance_km)} كم</span></div>
     <div class="run-foot"><div class="run-price">${escapeHtml(run.price || 'مجانية')}</div><button class="run-open" data-event="${escapeHtml(run.id)}">التفاصيل ↙</button></div></div></article>`;
 }
@@ -237,7 +237,7 @@ function openModal(id) {
   $('modal-content').innerHTML = `
     <div class="modal-body">
       <h2>${escapeHtml(run.title)}</h2>
-      <p class="muted-text">منظم الجَرية: ${escapeHtml(run.organizer_name || 'Stride')}</p>
+      <p class="muted-text">منظّم الجَرية: Stride</p>
       <p>◷ الموعد: ${escapeHtml(formatDate(run.starts_at))}</p>
       <p>⌖ التجمع: ${escapeHtml(run.location)}</p>
       <p>المسافة: ${escapeHtml(run.distance_km)} كم</p>
@@ -253,11 +253,15 @@ function openModal(id) {
         </select>
       </label><label class="run-status-control">مدة الجَرية بالدقائق
         <input id="run-duration-choice" type="number" min="15" max="1440" value="${Math.min(1440, Math.max(15, Number(run.duration_minutes) || 90))}">
-      </label><button class="secondary-btn" id="save-run-settings">حفظ حالة الجَرية</button>` : ''}
+      </label><button class="secondary-btn" id="save-run-settings">حفظ حالة الجَرية</button>
+        <button class="danger-btn" id="delete-run-btn" type="button">حذف الجَرية نهائيًا</button>` : ''}
     </div>`;
 
   $('book-now-btn').onclick = () => toggleBooking(run, booked);
-  if (isAdmin()) $('save-run-settings').onclick = () => saveRunSettings(run);
+  if (isAdmin()) {
+    $('save-run-settings').onclick = () => saveRunSettings(run);
+    $('delete-run-btn').onclick = event => deleteRun(run, event.currentTarget);
+  }
   $('modal').classList.add('active');
 }
 
@@ -283,6 +287,41 @@ async function saveRunSettings(run) {
   $('modal').classList.remove('active');
   await refreshData();
   toast('تم تحديث حالة الجَرية.');
+}
+
+async function deleteRun(run, button) {
+  if (!isAdmin()) return toast('حذف الجريات متاح للأدمن فقط.');
+  if (!window.confirm(`هل تريد حذف جَرية «${run.title}» نهائيًا؟ سيتم حذف الحجوزات ومحادثتها أيضًا.`)) return;
+  button.disabled = true;
+  const { error } = await db.from('runs').delete().eq('id', run.id);
+  if (error) {
+    button.disabled = false;
+    console.error('Run deletion failed:', error.code || 'unknown');
+    return toast('تعذّر حذف الجَرية. حاول مرة أخرى.');
+  }
+
+  let imageCleanupFailed = false;
+  if (run.image_url) {
+    try {
+      const imageUrl = new URL(run.image_url);
+      const objectPrefix = '/storage/v1/object/public/runmate-run-images/';
+      const marker = imageUrl.pathname.indexOf(objectPrefix);
+      if (imageUrl.origin === new URL(SUPABASE_URL).origin && marker >= 0) {
+        const imagePath = decodeURIComponent(imageUrl.pathname.slice(marker + objectPrefix.length));
+        if (imagePath) {
+          const { error: cleanupError } = await db.storage.from('runmate-run-images').remove([imagePath]);
+          imageCleanupFailed = !!cleanupError;
+        }
+      }
+    } catch (cleanupError) {
+      imageCleanupFailed = true;
+      console.error('Run image cleanup failed:', cleanupError?.statusCode || 'unknown');
+    }
+  }
+
+  $('modal').classList.remove('active');
+  await refreshData();
+  toast(imageCleanupFailed ? 'حُذفت الجَرية والحجوزات والمحادثة، لكن تعذّر حذف صورتها.' : 'تم حذف الجَرية وحجوزاتها ومحادثتها.');
 }
 
 async function toggleReadOnly(run) {

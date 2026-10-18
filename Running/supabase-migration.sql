@@ -324,7 +324,7 @@ WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users cancel own bookings" ON public.bookings FOR DELETE TO authenticated
 USING (auth.uid() = user_id OR public.is_admin_or_owner());
 REVOKE ALL ON TABLE public.bookings FROM PUBLIC, anon, authenticated;
-GRANT SELECT (id, run_id, user_id, created_at) ON TABLE public.bookings TO authenticated;
+GRANT SELECT (run_id, user_id) ON TABLE public.bookings TO authenticated;
 GRANT INSERT (run_id, user_id) ON TABLE public.bookings TO authenticated;
 GRANT DELETE ON TABLE public.bookings TO authenticated;
 
