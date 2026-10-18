@@ -53,6 +53,7 @@
         <button class="primary-btn" type="submit">إنشاء الحساب</button>
       </form>
 
+      <button type="button" id="resend-confirmation-btn" class="text-link-btn">إعادة إرسال رسالة تأكيد البريد</button>
       <p id="auth-message"></p>
     </div>
   </div>
@@ -63,9 +64,10 @@
       <div class="brand"><span class="brand-mark">.R</span> RUNMATE</div>
       <nav class="nav-links">
         <button data-page="home" class="active">الرئيسية</button>
-        <button data-page="explore">اكتشف</button>
+        <button data-page="clips">Clips</button>
         <button data-page="tickets">حجوزاتي</button>
         <button data-page="chats">المحادثات</button>
+        <button data-page="admin" class="admin-only" hidden>الإدارة</button>
         <button data-page="organizer" class="admin-only" hidden>إدارة الجريات</button>
         <button data-page="profile">حسابي</button>
       </nav>
@@ -84,16 +86,9 @@
           <h2>جاهز لجريتك الجاية؟</h2>
           <p>اكتشف الجريات المتاحة واحجز مكانك الآن.</p>
         </div>
+        <div class="search-bar"><input type="text" id="search" placeholder="ابحث عن جَرية أو موقع..."></div>
         <div class="section-title">الجريات القادمة</div>
         <div class="runs-grid" id="home-runs"></div>
-      </section>
-
-      <!-- صفحة اكتشف -->
-      <section class="page" id="page-explore">
-        <div class="search-bar">
-          <input type="text" id="search" placeholder="ابحث عن جَرية أو موقع...">
-        </div>
-        <div class="runs-grid" id="explore-runs"></div>
       </section>
 
       <!-- صفحة حجوزاتي -->
@@ -137,6 +132,25 @@
         </form>
       </section>
 
+      <section class="page" id="page-clips">
+        <div class="page-heading"><h2>Clips</h2><p class="muted-text">شارك لحظات الجري. ستظهر المقاطع بعد مراجعتها.</p></div>
+        <form id="clip-upload-form" class="form-card clip-upload-form">
+          <label>الصورة أو الفيديو <input id="clip-file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" required></label>
+          <label>تعليق (اختياري) <input id="clip-caption" maxlength="500" type="text" placeholder="أضف تعليقاً قصيراً"></label>
+          <small>حتى 50 ميغابايت. الصيغ: JPG, PNG, WebP, MP4, WebM, MOV.</small>
+          <button class="primary-btn" type="submit">رفع للمراجعة</button>
+          <p id="clip-upload-status" class="muted-text" aria-live="polite"></p>
+        </form>
+        <div id="clips-list" class="clips-grid"></div>
+      </section>
+
+      <section class="page admin-only" id="page-admin" hidden>
+        <h2>لوحة الإدارة</h2>
+        <h3>المحتوى المعلّق للمراجعة</h3>
+        <div id="admin-pending-clips" class="clips-grid"></div>
+        <h3>المستخدمون</h3>
+        <div id="admin-users" class="admin-users"></div>
+      </section>
       <!-- صفحة حسابي -->
       <section class="page" id="page-profile">
         <div class="profile-card">
@@ -164,3 +178,6 @@
   <script src="app.js"></script>
 </body>
 </html>
+
+
+

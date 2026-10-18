@@ -1,34 +1,30 @@
 # RUNMATE setup
 
-## الملفات
-- `index.html`: واجهة الموقع.
-- `styles.css`: التنسيق والتجاوب مع الهاتف.
-- `app.js`: تسجيل الدخول والحجوزات والجريات والمحادثات.
-- `schema.sql`: الجداول وصلاحيات قاعدة البيانات.
+واجهة عربية ثابتة للجريات والحجوزات والمحادثات ومقاطع المجتمع، مبنية على Supabase Auth وPostgreSQL وStorage.
 
-## 1) إعداد Supabase
-1. أنشئ مشروعًا في https://supabase.com/
-2. افتح SQL Editor والصق محتوى `schema.sql` كاملًا ثم نفّذه.
-3. من Project Settings > API انسخ Project URL و anon/public key.
-4. افتح `app.js` وبدّل:
-   - `YOUR_SUPABASE_PROJECT_URL`
-   - `YOUR_SUPABASE_ANON_KEY`
-   بالقيم الخاصة بمشروعك. لا تستخدم `service_role` key في الواجهة مطلقًا.
-5. من Authentication > Providers فعّل Email. إذا أردت الهاتف، فعّل Phone واضبط مزوّد SMS؛ قد تكون رسائل SMS مدفوعة.
-6. من Authentication > URL Configuration أضف عنوان الموقع إلى Site URL وRedirect URLs.
+## إعداد Supabase
 
-## 2) جعل حسابك أدمن
-1. أنشئ حسابك من الموقع أولًا.
-2. افتح Supabase > Authentication > Users وخذ UUID الخاص بحسابك.
-3. في SQL Editor نفّذ (استبدل UUID بالقيمة الحقيقية):
-   `update public.profiles set role = 'admin' where id = 'YOUR_AUTH_USER_UUID';`
-4. سجّل الخروج ثم الدخول من جديد. لن يكون أي حساب جديد أدمن تلقائيًا.
+- لمشروع جديد: نفّذ `schema.sql` كاملًا في SQL Editor.
+- للمشروع الحالي: نفّذ `supabase-migration.sql` مرة واحدة. يضيف عمود الهاتف الاختياري، ويوحّد دور العضو إلى `member`، ويُبقي أدوار الإدارة والبيانات الموجودة، ويضيف تخزين المقاطع وسياسات RLS.
+- تأكد من تفعيل Email في Authentication. تأكيد البريد يظل مفعّلًا، ويُنشأ الملف الشخصي من trigger `on_auth_user_created` حتى عند انتظار التأكيد.
+- في Authentication > URL Configuration أضف عنوان الموقع المنشور إلى Site URL وRedirect URLs.
+- يحتوي `app.js` على Project URL ومفتاح publishable فقط. لا تضف `service_role` أو مفاتيح سرية إلى ملفات المتصفح.
 
-## 3) التشغيل
-شغّل المشروع عبر VS Code Live Server أو استضافة ثابتة تدعم HTTPS.
+بعد تطبيق migration، يمكن جعل حساب موجود مديرًا من SQL Editor بعد التحقق من UUID:
 
-## ملاحظات مهمة
-- الجريات التجريبية القديمة حُذفت؛ لن تظهر جريات إلا بعد أن ينشئ الأدمن جَرية.
-- سياسات قاعدة البيانات تمنع الأعضاء من إنشاء/تعديل الجريات، وتمنع الكتابة في محادثة القراءة فقط لغير الأدمن.
-- الحجز الحالي ينشئ سجل مشاركة. إذا أردت ضمان عدم تجاوز عدد المقاعد عند ضغط عدة مستخدمين في نفس اللحظة، نحتاج إضافة RPC/transaction مخصصة للحجز.
-- هذه نسخة بداية متكاملة وظيفيًا، ويجب اختبار إعدادات Auth وRLS في مشروعك قبل نشرها للعامة.
+```sql
+update public.profiles set role = 'admin' where id = 'YOUR_AUTH_USER_UUID';
+```
+
+لا يمكن ترقية الحساب من واجهة الموقع أو بيانات التسجيل.
+
+## النشر على Vercel
+
+اختر مجلد `Running` كـ Root Directory، Framework Preset: Other، ولا تضع Build Command. الملفات الثابتة تُقدَّم من جذر المجلد، و`vercel.json` يعيد المسارات الداخلية إلى `index.html`.
+
+## المقاطع
+
+الصور والفيديوهات حتى 50 MiB تُرفع إلى bucket خاص. أعضاء الموقع يشاهدون مقاطعهم وحالاتها؛ الجمهور يحصل على رابط موقّع للمقاطع المقبولة فقط. القبول والرفض وقائمة المستخدمين متاحة للمدير عبر لوحة الإدارة، وتُفرض الصلاحيات في PostgreSQL وStorage RLS.
+
+شغّل فحوصات المصدر عبر `node --test tests/*.test.mjs`. تحقق من إعدادات Supabase Auth وRLS وStorage وعناوين إعادة التوجيه في بيئتك قبل النشر. لم يتمكن هذا التعديل من الاتصال بقاعدة Supabase المنشورة أو تشغيل التسجيل الفعلي.
+
