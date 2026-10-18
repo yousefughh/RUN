@@ -37,35 +37,34 @@ create table if not exists public.bookings (
 );
 
 -- Keep available seats in sync with bookings and reject overbooking.
--- Keep available seats in sync with bookings and reject overbooking.
-create OR REPLACE FUNCTION public.sync_run_seats_booked()
-returns trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $sync$
+create or replace function public.sync_run_seats_booked()
+returns trigger language plpgsql security definer set search_path = '' as $$
 begin
-  IF TG_OP = 'INSERT' THEN
+  if tg_op = 'INSERT' then
     update public.runs
     set seats_booked = seats_booked + 1
-    where id = NEW.run_id AND seats_booked < seats_total;
-    if NOT FOUND THEN RAISE EXCEPTION 'Run is full or has no available seats'; END IF;
-    return NEW;
-  elsif TG_OP = 'DELETE' THEN
+    where id = new.run_id and seats_booked < seats_total;
+    if not found then raise exception 'Run is full or has no available seats'; end if;
+    return new;
+  elsif tg_op = 'DELETE' then
     update public.runs
     set seats_booked = greatest(seats_booked - 1, 0)
-    where id = OLD.run_id;
-    return OLD;
+    where id = old.run_id;
+    return old;
   end if;
-  return NULL;
+  return null;
 end;
-$sync$;
-drop TRIGGER IF EXISTS bookings_sync_run_seats_after_insert ON public.bookings;
-drop TRIGGER IF EXISTS bookings_sync_run_seats_after_delete ON public.bookings;
-create TRIGGER bookings_sync_run_seats_after_insert
-after INSERT ON public.bookings FOR EACH ROW
-execute FUNCTION public.sync_run_seats_booked();
-create TRIGGER bookings_sync_run_seats_after_delete
-after DELETE ON public.bookings FOR EACH ROW
-execute FUNCTION public.sync_run_seats_booked();
-update public.runs r SET seats_booked = (
-  select count(*)::integer FROM public.bookings b WHERE b.run_id = r.id
+$$;
+drop trigger if exists bookings_sync_run_seats_after_insert on public.bookings;
+drop trigger if exists bookings_sync_run_seats_after_delete on public.bookings;
+create trigger bookings_sync_run_seats_after_insert
+after insert on public.bookings for each row
+execute function public.sync_run_seats_booked();
+create trigger bookings_sync_run_seats_after_delete
+after delete on public.bookings for each row
+execute function public.sync_run_seats_booked();
+update public.runs r set seats_booked = (
+  select count(*)::integer from public.bookings b where b.run_id = r.id
 );
 
 create table if not exists public.messages (
@@ -101,21 +100,18 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute procedure public.handle_new_user();
 
--- Prevent regular users from changing their own role to admin.
+-- Never allow a client session to alter roles directly. Role changes must go through
+-- the owner-only SECURITY DEFINER function below.
 create or replace function public.protect_profile_role()
 returns trigger
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $$
 begin
   if new.role is distinct from old.role
-     and auth.uid() is not null
-     and not exists (
-       select 1 from public.profiles p
-       where p.id = auth.uid() and p.role IN ('admin', 'owner')
-     ) then
-    raise exception 'Only an administrator or owner can change account roles';
+     and current_user not in ('postgres', 'service_role') then
+    raise exception 'Account roles can only be changed through the owner role-management function';
   end if;
   return new;
 end;
@@ -183,6 +179,12 @@ create policy "Users can update their own profile"
 on public.profiles for update to authenticated
 using (auth.uid() = id)
 with check (auth.uid() = id);
+
+-- Do not expose stored phone numbers through the public API. Grant only the
+-- profile fields used by the site, and restrict profile edits to name and avatar.
+revoke select, update on table public.profiles from public, anon, authenticated;
+grant select (id, display_name, avatar_path, role, created_at) on table public.profiles to anon, authenticated;
+grant update (display_name, avatar_path) on table public.profiles to authenticated;
 
 create policy "Runs are viewable by everyone"
 on public.runs for select using (true);
@@ -362,7 +364,6 @@ CREATE POLICY "Users upload their own profile photos" ON storage.objects FOR INS
 WITH CHECK (bucket_id = 'runmate-avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
 CREATE POLICY "Users delete their own profile photos" ON storage.objects FOR DELETE TO authenticated
 USING (bucket_id = 'runmate-avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
-
 
 
 
