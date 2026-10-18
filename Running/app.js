@@ -54,7 +54,7 @@ $('form-register').addEventListener('submit', async e => {
       id: data.user.id,
       display_name: name,
       phone: phone,
-      role: 'user'
+      role: 'member'
     }, { onConflict: 'id' });
 
     if (profileError) console.error('خطأ في حفظ البروفايل:', profileError.message);
@@ -107,7 +107,7 @@ async function loadSession(session) {
     const fallbackName = state.user.user_metadata?.display_name || state.user.email?.split('@')[0] || 'مستخدم RUNMATE';
     const fallbackPhone = state.user.user_metadata?.phone || '';
     const { error: saveError } = await db.from('profiles').upsert({
-      id: state.user.id, display_name: fallbackName, phone: fallbackPhone, role: 'user'
+      id: state.user.id, display_name: fallbackName, phone: fallbackPhone, role: 'member'
     }, { onConflict: 'id' });
     if (saveError) {
       showMessage('تعذر تحميل الملف الشخصي. راجع تنفيذ schema.sql وصلاحيات profiles في Supabase.');
