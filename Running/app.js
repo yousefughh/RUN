@@ -5,6 +5,8 @@ const AUTH_REDIRECT_URL = 'https://yousefughh.github.io/RUN/';
 const supabaseReady = SUPABASE_URL.startsWith('https://') && !SUPABASE_URL.includes('YOUR_');
 const db = supabaseReady ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const chatAvatarUrls = new Map();
+let activeChatChannel = null;
+let chatRefreshJob = null;
 
 const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, authListener: false, loadingSessionUserId: null, clips: [], passwordRecovery: new URLSearchParams(location.hash.slice(1)).get('type') === 'recovery' };
 const $ = id => document.getElementById(id);
@@ -61,6 +63,55 @@ async function renderChatMessages(messages, runId) {
       placeholder.replaceWith(image);
     });
   });
+}
+
+
+async function stopChatRealtime() {
+  const channel = activeChatChannel;
+  activeChatChannel = null;
+  chatRefreshJob = null;
+  if (channel && db) await db.removeChannel(channel);
+}
+
+async function refreshChatMessages(runId, showError = false) {
+  if (state.activeChatRun !== runId || !activeChatChannel) return false;
+  if (chatRefreshJob?.runId === runId && chatRefreshJob.busy) {
+    chatRefreshJob.pending = true;
+    return true;
+  }
+  const job = { runId, busy: true, pending: false };
+  chatRefreshJob = job;
+  let succeeded = true;
+  do {
+    job.pending = false;
+    const { data, error } = await db.rpc('get_run_chat_messages', { p_run_id: runId });
+    if (error) {
+      succeeded = false;
+      if (showError && state.activeChatRun === runId) {
+        const box = $('chat-messages');
+        if (box) box.innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`;
+      } else {
+        console.warn('Could not refresh chat messages:', error.message);
+      }
+      break;
+    }
+    if (state.activeChatRun === runId) await renderChatMessages(data || [], runId);
+  } while (job.pending && state.activeChatRun === runId && activeChatChannel);
+  if (chatRefreshJob === job) chatRefreshJob = null;
+  return succeeded;
+}
+
+function subscribeToRunChat(runId) {
+  const channel = db.channel(`run-chat:${runId}`)
+    .on('postgres_changes', {
+      event: 'INSERT', schema: 'public', table: 'messages', filter: `run_id=eq.${runId}`
+    }, () => { void refreshChatMessages(runId); })
+    .subscribe(status => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn(`Realtime chat subscription ${status.toLowerCase()} for run ${runId}`);
+      }
+    });
+  activeChatChannel = channel;
 }
 
 function showMessage(message, target = 'auth-message') {
@@ -285,6 +336,7 @@ function navigateTo(pageId) {
     toast('إنشاء الجريات متاح للأدمن فقط');
     return;
   }
+  if (pageId !== 'chats' && activeChatChannel) void stopChatRealtime();
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${pageId}`));
   document.querySelectorAll('[data-page]').forEach(item => item.classList.toggle('active', item.dataset.page === pageId));
   
@@ -402,6 +454,7 @@ async function toggleBooking(run, booked) {
     const { error } = await db.from('bookings').delete().eq('run_id', run.id).eq('user_id', state.user.id);
     if (error) return toast(error.code === '23505' ? 'أنت مسجل بالفعل في هذه الجَرية.' : 'تعذّر إلغاء الحجز. حاول مرة أخرى.');
     if (state.activeChatRun === run.id) {
+      await stopChatRealtime();
       state.activeChatRun = null;
       $('chat-panel').innerHTML = '<p class="empty-state">ألغيت حجزك؛ لم تعد عضوًا في محادثة الجَرية.</p>';
     }
@@ -539,39 +592,35 @@ async function renderChatsList() {
 }
 
 async function openChat(runId) {
-  state.activeChatRun = runId;
   const run = state.bookings.find(item => item.id === runId) || state.events.find(item => item.id === runId);
   if (!run && !isAdmin()) return toast('المحادثة متاحة للمشاركين الذين حجزوا فقط');
 
+  await stopChatRealtime();
+  state.activeChatRun = runId;
   navigateTo('chats');
   await renderChatsList();
 
   $('chat-panel').innerHTML = `<header class="chat-header"><div><h3>${escapeHtml(run?.title || 'محادثة الجَرية')}</h3><p class="muted-text">${run?.admin_only_chat ? 'الكتابة للأدمن والمنظّم فقط' : 'المشاركون يستطيعون الكتابة'}</p></div>${isAdmin() ? `<button class="secondary-btn" id="toggle-readonly" type="button">${run?.admin_only_chat ? 'السماح للمشاركين بالكتابة' : 'قصر الكتابة على الأدمن والمنظّم'}</button>` : ''}</header><div class="chat-messages" id="chat-messages"><p class="empty-state">جارٍ تحميل الرسائل...</p></div><form id="chat-form" class="chat-form"><input id="chat-text" maxlength="2000" placeholder="اكتب رسالة..." required><button class="primary-btn" type="submit">إرسال</button></form>`;
   if (isAdmin()) $('toggle-readonly').onclick = () => toggleReadOnly(run);
 
-  const { data, error } = await db.rpc('get_run_chat_messages', { p_run_id: runId });
-  if (error) { $('chat-messages').innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`; return; }
+  subscribeToRunChat(runId);
+  const loaded = await refreshChatMessages(runId, true);
+  if (!loaded) return;
 
   const isReadOnly = !!run?.admin_only_chat && !isAdmin();
   $('chat-form').hidden = isReadOnly;
-  
   if (isReadOnly) {
     $('chat-panel').insertAdjacentHTML('afterbegin', '<p class="readonly-note">المحادثة للقراءة فقط؛ إرسال الرسائل متاح للأدمن والمنظمين فقط.</p>');
   }
-
-  await renderChatMessages(data || [], runId);
 
   $('chat-form').onsubmit = async e => {
     e.preventDefault();
     const body = $('chat-text').value.trim();
     if (!body) return;
-
     const { error: sendError } = await db.from('messages').insert({ run_id: runId, user_id: state.user.id, body });
     if (sendError) return toast('تعذر إرسال الرسالة: ' + sendError.message);
     $('chat-text').value = '';
-    const { data: latestMessages, error: messagesError } = await db.rpc('get_run_chat_messages', { p_run_id: runId });
-    if (messagesError) return toast('تم إرسال الرسالة، لكن تعذر تحديث المحادثة. أعد فتحها لاحقًا.');
-    await renderChatMessages(latestMessages || [], runId);
+    if (!await refreshChatMessages(runId)) toast('تم إرسال الرسالة، لكن تعذر تحديث المحادثة الآن.');
   };
 }
 
