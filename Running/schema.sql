@@ -222,7 +222,7 @@ alter table public.bookings enable row level security;
 alter table public.messages enable row level security;
 
 -- Drop policies from earlier versions before recreating them.
-do $$
+do $realtime$$
 declare policy_record record;
 begin
   for policy_record in
@@ -348,7 +348,7 @@ begin
   elsif not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
     raise notice 'supabase_realtime publication is missing; enable Realtime for public.messages in Supabase.';
   end if;
-end $;
+end $realtime$;
 -- RUNMATE compatibility and Clips migration. Safe to re-run; preserves users and existing profiles.
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone text;
 DO $$
