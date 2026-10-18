@@ -270,7 +270,7 @@ on public.runs for select using (true);
 revoke select on table public.runs from public, anon, authenticated;
 grant select (id, title, starts_at, location, distance_km, seats_total, seats_booked,
               run_status, duration_minutes, price, image_url, admin_only_chat,
-              organizer_name, created_at) on table public.runs to authenticated;
+              created_at) on table public.runs to authenticated;
 revoke insert, update, delete on table public.runs from public, anon, authenticated;
 grant insert (title, starts_at, location, distance_km, seats_total, price, image_url,
               admin_only_chat, run_status, duration_minutes, organizer_name, created_by)
@@ -431,6 +431,7 @@ VALUES ('runmate-avatars', 'runmate-avatars', false, 5242880, ARRAY['image/jpeg'
 ON CONFLICT (id) DO UPDATE SET public = false, file_size_limit = EXCLUDED.file_size_limit,
 allowed_mime_types = EXCLUDED.allowed_mime_types;
 DROP POLICY IF EXISTS "Profile photos are public" ON storage.objects;
+DROP POLICY IF EXISTS "Profile photos are private to their owner and admins" ON storage.objects;
 DROP POLICY IF EXISTS "Users upload their own profile photos" ON storage.objects;
 DROP POLICY IF EXISTS "Users delete their own profile photos" ON storage.objects;
 CREATE POLICY "Profile photos are private to their owner and admins" ON storage.objects FOR SELECT TO authenticated
@@ -459,6 +460,7 @@ VALUES ('runmate-avatars', 'runmate-avatars', false, 5242880, ARRAY['image/jpeg'
 ON CONFLICT (id) DO UPDATE SET public = false, file_size_limit = EXCLUDED.file_size_limit,
 allowed_mime_types = EXCLUDED.allowed_mime_types;
 DROP POLICY IF EXISTS "Profile photos are public" ON storage.objects;
+DROP POLICY IF EXISTS "Profile photos are private to their owner and admins" ON storage.objects;
 DROP POLICY IF EXISTS "Users upload their own profile photos" ON storage.objects;
 DROP POLICY IF EXISTS "Users delete their own profile photos" ON storage.objects;
 CREATE POLICY "Profile photos are private to their owner and admins" ON storage.objects FOR SELECT TO authenticated
