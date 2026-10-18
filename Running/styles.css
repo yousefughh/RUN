@@ -140,3 +140,20 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   .hero { padding: 27px 21px; }
   .message { max-width: 92%; }
 }
+
+.page-heading { margin-bottom: 1.25rem; }
+.clip-upload-form { max-width: 640px; margin: 0 0 2rem; }
+.clip-upload-form small { color: #9aa1ad; }
+.clips-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; margin: 1rem 0 2rem; }
+.clip-card { overflow: hidden; border: 1px solid #2b303a; border-radius: 14px; background: #171a20; }
+.clip-card img, .clip-card video { display: block; width: 100%; max-height: 360px; aspect-ratio: 4 / 5; object-fit: cover; background: #0c0e12; }
+.clip-card-body { padding: 1rem; }
+.clip-card-body p { overflow-wrap: anywhere; }
+.clip-status { display: inline-flex; padding: .25rem .55rem; border-radius: 20px; font-size: .8rem; background: #343944; }
+.clip-status.approved { background: #153e2c; color: #9ee7bd; }
+.clip-status.rejected { background: #4a2428; color: #ffc0c4; }
+.clip-actions { display: flex; gap: .5rem; margin-top: .75rem; }
+.admin-users { overflow-x: auto; }
+.admin-users table { width: 100%; border-collapse: collapse; }
+.admin-users th, .admin-users td { text-align: right; padding: .75rem; border-bottom: 1px solid #2b303a; }
+@media (max-width: 700px) { .clips-grid { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: .65rem; } }
