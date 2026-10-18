@@ -97,6 +97,7 @@ for each row execute procedure public.protect_profile_role();
 create or replace function public.set_profile_role(target_profile_id uuid, requested_role text)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('runmate-owner-role-change', 0));
   if auth.uid() is null or not exists (
     select 1 from public.profiles where id = auth.uid() and role = 'owner'
   ) then
