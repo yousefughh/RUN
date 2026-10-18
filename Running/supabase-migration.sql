@@ -1,6 +1,38 @@
 -- RUNMATE compatibility and Clips migration. Safe to re-run; preserves users and existing profiles.
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone text;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_path text;
+ALTER TABLE public.runs ADD COLUMN IF NOT EXISTS seats_booked integer NOT NULL DEFAULT 0;
+
+-- Keep available seats in sync with bookings and reject overbooking.
+CREATE OR REPLACE FUNCTION public.sync_run_seats_booked()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    UPDATE public.runs
+    SET seats_booked = seats_booked + 1
+    WHERE id = NEW.run_id AND seats_booked < seats_total;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Run is full or has no available seats'; END IF;
+    RETURN NEW;
+  ELSIF TG_OP = 'DELETE' THEN
+    UPDATE public.runs
+    SET seats_booked = GREATEST(seats_booked - 1, 0)
+    WHERE id = OLD.run_id;
+    RETURN OLD;
+  END IF;
+  RETURN NULL;
+END;
+$;
+DROP TRIGGER IF EXISTS bookings_sync_run_seats_after_insert ON public.bookings;
+DROP TRIGGER IF EXISTS bookings_sync_run_seats_after_delete ON public.bookings;
+CREATE TRIGGER bookings_sync_run_seats_after_insert
+AFTER INSERT ON public.bookings FOR EACH ROW
+EXECUTE FUNCTION public.sync_run_seats_booked();
+CREATE TRIGGER bookings_sync_run_seats_after_delete
+AFTER DELETE ON public.bookings FOR EACH ROW
+EXECUTE FUNCTION public.sync_run_seats_booked();
+UPDATE public.runs r SET seats_booked = (
+  SELECT COUNT(*)::integer FROM public.bookings b WHERE b.run_id = r.id
+);
 DO $$
 DECLARE c record;
 BEGIN
