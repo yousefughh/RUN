@@ -44,9 +44,6 @@
         <label>البريد الإلكتروني
           <input type="email" id="reg-identity" required placeholder="name@example.com">
         </label>
-        <label>رقم الهاتف (اختياري)
-          <input type="tel" id="reg-phone" placeholder="010XXXXXXXX">
-        </label>
         <label>كلمة السر
           <input type="password" id="reg-pass" required placeholder="********">
         </label>
@@ -62,7 +59,6 @@
   <div id="app-shell">
     <header class="top-nav">
       <div class="brand"><span class="brand-mark">.R</span> RUNMATE</div>
-      <button class="mobile-menu-toggle" id="mobile-menu-toggle" type="button" aria-expanded="false" aria-controls="main-nav">القائمة</button>
       <nav class="nav-links" id="main-nav">
         <button data-page="home" class="active">الرئيسية</button>
         <button data-page="clips">Clips</button>
@@ -70,11 +66,9 @@
         <button data-page="chats">المحادثات</button>
         <button data-page="admin" class="admin-only" hidden>الإدارة</button>
         <button data-page="organizer" class="admin-only" hidden>إدارة الجريات</button>
-        <button data-page="profile">حسابي</button>
       </nav>
       <div class="user-menu">
-        <div class="avatar" id="user-avatar-initials">U</div>
-        <button id="logout-btn" class="logout-btn">خروج</button>
+        <button class="avatar" id="user-avatar-initials" type="button" aria-label="افتح الملف الشخصي">U</button>
       </div>
     </header>
 
@@ -88,8 +82,18 @@
           <p>اكتشف الجريات المتاحة واحجز مكانك الآن.</p>
         </div>
         <div class="search-bar"><input type="text" id="search" placeholder="ابحث عن جَرية أو موقع..."></div>
-        <div class="section-title">الجريات القادمة</div>
-        <div class="runs-grid" id="home-runs"></div>
+        <section class="runs-section" aria-labelledby="upcoming-runs-title">
+          <h2 class="section-title" id="upcoming-runs-title">الجريات القادمة</h2>
+          <div class="runs-grid" id="upcoming-runs"></div>
+        </section>
+        <section class="runs-section" aria-labelledby="current-runs-title">
+          <h2 class="section-title" id="current-runs-title">الجريات الحالية</h2>
+          <div class="runs-grid" id="current-runs"></div>
+        </section>
+        <section class="runs-section" aria-labelledby="previous-runs-title">
+          <h2 class="section-title" id="previous-runs-title">الجريات السابقة</h2>
+          <div class="runs-grid" id="previous-runs"></div>
+        </section>
       </section>
 
       <!-- صفحة حجوزاتي -->
@@ -159,7 +163,6 @@
           <div class="avatar-large" id="profile-avatar-large">U</div>
           <h3 id="profile-name">اسم المستخدم</h3>
           <p id="profile-email" class="muted-text">email@example.com</p>
-          <p id="profile-phone" class="muted-text">010XXXXXXXX</p>
           <span class="role-badge" id="profile-role">عضو RUNMATE</span>
           <form id="profile-photo-form" class="profile-photo-form">
             <label for="profile-photo-file">صورة الحساب (JPG أو PNG أو WebP، حتى 5 ميغابايت)</label>
@@ -186,7 +189,6 @@
   <script src="app.js"></script>
 </body>
 </html>
-
 
 
 
