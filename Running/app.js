@@ -4,6 +4,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_H54WIGq4spz51QFkSjmR8w_ohdXdv90';
 const AUTH_REDIRECT_URL = 'https://yousefughh.github.io/RUN/';
 const supabaseReady = SUPABASE_URL.startsWith('https://') && !SUPABASE_URL.includes('YOUR_');
 const db = supabaseReady ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const chatAvatarUrls = new Map();
 
 const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, authListener: false, loadingSessionUserId: null, clips: [], passwordRecovery: new URLSearchParams(location.hash.slice(1)).get('type') === 'recovery' };
 const $ = id => document.getElementById(id);
@@ -18,6 +19,48 @@ async function getPrivateAvatarUrl(path) {
     return '';
   }
   return data?.signedUrl || '';
+}
+
+async function getChatAvatarUrl(path) {
+  if (!path) return '';
+  const cached = chatAvatarUrls.get(path);
+  if (cached && cached.expiresAt > Date.now() + 30_000) return cached.url;
+  const { data, error } = await db.storage.from('runmate-avatars').createSignedUrl(path, 3600);
+  const url = error ? '' : data?.signedUrl || '';
+  chatAvatarUrls.set(path, { url, expiresAt: Date.now() + (url ? 55 * 60_000 : 30_000) });
+  return url;
+}
+
+async function renderChatMessages(messages, runId) {
+  const box = $('chat-messages');
+  if (!box || state.activeChatRun !== runId) return;
+  const paths = [...new Set((messages || []).map(message => message.avatar_path).filter(Boolean))];
+  const pathIndexes = new Map(paths.map((path, index) => [path, index]));
+  box.innerHTML = messages?.length
+    ? [...messages].reverse().map(message => {
+      const name = message.sender_name || 'عضو في Stride';
+      const initial = Array.from(name.trim())[0] || 'ع';
+      const avatarIndex = pathIndexes.get(message.avatar_path);
+      const avatar = avatarIndex === undefined
+        ? `<span class="message-avatar message-avatar-fallback" aria-hidden="true">${escapeHtml(initial)}</span>`
+        : `<span class="message-avatar message-avatar-fallback" data-avatar-index="${avatarIndex}" aria-hidden="true">${escapeHtml(initial)}</span>`;
+      return `<div class="message"><div class="message-heading">${avatar}<b>${escapeHtml(name)}</b></div><p>${escapeHtml(message.body)}</p><small>${escapeHtml(formatDate(message.created_at))}</small></div>`;
+    }).join('')
+    : '<p class="empty-state">لا توجد رسائل بعد. ابدأوا المحادثة!</p>';
+  box.scrollTop = box.scrollHeight;
+
+  const urls = await Promise.all(paths.map(path => getChatAvatarUrl(path)));
+  if (!box.isConnected || state.activeChatRun !== runId) return;
+  urls.forEach((url, index) => {
+    if (!url) return;
+    box.querySelectorAll(`[data-avatar-index="${index}"]`).forEach(placeholder => {
+      const image = document.createElement('img');
+      image.className = 'message-avatar';
+      image.src = url;
+      image.alt = 'صورة صاحب الرسالة';
+      placeholder.replaceWith(image);
+    });
+  });
 }
 
 function showMessage(message, target = 'auth-message') {
@@ -480,7 +523,7 @@ async function openChat(runId) {
   $('chat-panel').innerHTML = `<header class="chat-header"><div><h3>${escapeHtml(run?.title || 'محادثة الجَرية')}</h3><p class="muted-text">${run?.admin_only_chat ? 'الكتابة للأدمن والمنظّم فقط' : 'المشاركون يستطيعون الكتابة'}</p></div>${isAdmin() ? `<button class="secondary-btn" id="toggle-readonly" type="button">${run?.admin_only_chat ? 'السماح للمشاركين بالكتابة' : 'قصر الكتابة على الأدمن والمنظّم'}</button>` : ''}</header><div class="chat-messages" id="chat-messages"><p class="empty-state">جارٍ تحميل الرسائل...</p></div><form id="chat-form" class="chat-form"><input id="chat-text" maxlength="2000" placeholder="اكتب رسالة..." required><button class="primary-btn" type="submit">إرسال</button></form>`;
   if (isAdmin()) $('toggle-readonly').onclick = () => toggleReadOnly(run);
 
-  const { data, error } = await db.from('messages').select('id,body,created_at').eq('run_id', runId).order('created_at', { ascending: false }).limit(300);
+  const { data, error } = await db.rpc('get_run_chat_messages', { p_run_id: runId });
   if (error) { $('chat-messages').innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`; return; }
 
   const isReadOnly = !!run?.admin_only_chat && !isAdmin();
@@ -490,11 +533,7 @@ async function openChat(runId) {
     $('chat-panel').insertAdjacentHTML('afterbegin', '<p class="readonly-note">المحادثة للقراءة فقط؛ إرسال الرسائل متاح للأدمن والمنظمين فقط.</p>');
   }
 
-  $('chat-messages').innerHTML = data?.length 
-    ? [...data].reverse().map(msg => `<div class="message"><b>عضو في Stride</b><p>${escapeHtml(msg.body)}</p><small>${escapeHtml(formatDate(msg.created_at))}</small></div>`).join('') 
-    : '<p class="empty-state">لا توجد رسائل بعد. ابدأوا المحادثة!</p>';
-
-  $('chat-messages').scrollTop =$('chat-messages').scrollHeight;
+  await renderChatMessages(data || [], runId);
 
   $('chat-form').onsubmit = async e => {
     e.preventDefault();
@@ -503,7 +542,10 @@ async function openChat(runId) {
 
     const { error: sendError } = await db.from('messages').insert({ run_id: runId, user_id: state.user.id, body });
     if (sendError) return toast('تعذر إرسال الرسالة: ' + sendError.message);
-    await openChat(runId);
+    $('chat-text').value = '';
+    const { data: latestMessages, error: messagesError } = await db.rpc('get_run_chat_messages', { p_run_id: runId });
+    if (messagesError) return toast('تم إرسال الرسالة، لكن تعذر تحديث المحادثة. أعد فتحها لاحقًا.');
+    await renderChatMessages(latestMessages || [], runId);
   };
 }
 
