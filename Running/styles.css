@@ -45,6 +45,7 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 
 .top-nav { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 22px; padding: 14px clamp(16px, 4vw, 54px); background: rgba(20, 23, 29, .96); border-bottom: 1px solid var(--border-color); backdrop-filter: blur(12px); }
 .brand { flex-shrink: 0; font-size: 22px; font-weight: 800; letter-spacing: .6px; }
+.mobile-menu-toggle { display: none; border: 1px solid var(--border-color); border-radius: 9px; padding: 8px 12px; background: var(--bg-input); color: var(--text-main); font-weight: 700; }
 .nav-links { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 5px; }
 .nav-links button { border: 0; border-radius: 9px; background: transparent; color: var(--text-muted); padding: 10px 12px; font-size: 14px; font-weight: 700; }
 .nav-links button:hover, .nav-links button.active { color: white; background: rgba(255, 94, 58, .13); }
@@ -131,7 +132,11 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   .runs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 650px) {
-  .top-nav { padding: 12px 14px; }
+  .top-nav { padding: 12px 14px; gap: 10px; }
+  .mobile-menu-toggle { display: inline-flex; }
+  .nav-links { display: none; order: 4; width: 100%; justify-content: stretch; flex-wrap: wrap; overflow: visible; }
+  .nav-links.open { display: flex; }
+  .nav-links button { flex: 1 1 calc(50% - 6px); text-align: center; }
   .brand { font-size: 19px; }
   .main-content { padding: 20px 14px 40px; }
   .runs-grid, .tickets-list { grid-template-columns: 1fr; }
@@ -161,5 +166,7 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .admin-users { overflow-x: auto; }
 .admin-users table { width: 100%; border-collapse: collapse; }
 .admin-users th, .admin-users td { text-align: right; padding: .75rem; border-bottom: 1px solid #2b303a; }
+.admin-users select { min-width: 90px; padding: 8px; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-main); background: var(--bg-input); }
+.admin-users .role-save-btn { width: auto; min-width: 90px; margin: 0 6px 0 0; padding: 8px 10px; font-size: 13px; }
 @media (max-width: 700px) { .clips-grid { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: .65rem; } }
 
