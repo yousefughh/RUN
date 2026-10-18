@@ -302,7 +302,7 @@ USING (public.is_admin_or_owner());
 REVOKE ALL ON TABLE public.runs FROM PUBLIC, anon, authenticated;
 GRANT SELECT (id, title, starts_at, location, distance_km, seats_total, seats_booked,
               run_status, duration_minutes, price, image_url, admin_only_chat,
-              organizer_name, created_at) ON TABLE public.runs TO authenticated;
+              created_at) ON TABLE public.runs TO authenticated;
 GRANT INSERT (title, starts_at, location, distance_km, seats_total, price, image_url,
               admin_only_chat, run_status, duration_minutes, organizer_name, created_by)
 ON TABLE public.runs TO authenticated;
