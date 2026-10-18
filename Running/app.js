@@ -7,7 +7,8 @@ const db = supabaseReady ? window.supabase.createClient(SUPABASE_URL, SUPABASE_A
 const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, authListener: false, clips: [] };
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-const isAdmin = () => state.profile?.role === 'admin';
+const isAdmin = () => ['admin', 'owner'].includes(state.profile?.role);
+const isOwner = () => state.profile?.role === 'owner';
 
 function showMessage(message, target = 'auth-message') {
   const el = $(target);
@@ -49,7 +50,7 @@ $('form-register').addEventListener('submit', async e => {
     options: { data: { display_name: name, phone } }
   });
 
-  if (error) { console.error('Signup failed:', error.code || 'unknown'); return showMessage('تعذّر إنشاء الحساب. تحقق من البيانات وحاول مجدداً.'); }
+  if (error) { console.error('Signup failed:', error.code || 'unknown', error.message || ''); return showMessage('تعذّر إنشاء الحساب. أعد المحاولة، وإذا استمر العطل أرسل للدعم رمز الخطأ الظاهر في Console.'); }
 
   if (data.user) {
     if (data.session) {
@@ -110,12 +111,14 @@ async function loadSession(session) {
   const phone = profile.phone || '';
   const initial = Array.from(name)[0] || 'U';
 
-  $('user-avatar-initials').textContent = initial;
-  $('profile-avatar-large').textContent = initial;
+  const avatarUrl = profile.avatar_path ? db.storage.from('runmate-avatars').getPublicUrl(profile.avatar_path).data.publicUrl : '';
+  const avatarMarkup = avatarUrl ? `<img src="${escapeHtml(avatarUrl)}" alt="صورة ${escapeHtml(name)}">` : escapeHtml(initial);
+  $('user-avatar-initials').innerHTML = avatarMarkup;
+  $('profile-avatar-large').innerHTML = avatarMarkup;
   $('profile-name').textContent = name;
   $('profile-email').textContent = email;
   $('profile-phone').textContent = phone ? `الهاتف: ${phone}` : '';
-  $('profile-role').textContent = isAdmin() ? 'حساب أدمن' : 'عضو RUNMATE';
+  $('profile-role').textContent = state.profile.role === 'owner' ? 'مالك RUNMATE' : isAdmin() ? 'حساب أدمن' : 'عضو RUNMATE';
 
   document.querySelectorAll('.admin-only').forEach(el => el.hidden = !isAdmin());
 
@@ -163,11 +166,24 @@ function navigateTo(pageId) {
 
 document.addEventListener('click', e => {
   const pageBtn = e.target.closest('[data-page]');
-  if (pageBtn) { e.preventDefault(); navigateTo(pageBtn.dataset.page); }
+  if (pageBtn) {
+    e.preventDefault();
+    navigateTo(pageBtn.dataset.page);
+    $('main-nav').classList.remove('open');
+    $('mobile-menu-toggle').setAttribute('aria-expanded', 'false');
+    document.querySelector('.top-nav').classList.remove('mobile-nav-open');
+  }
   const openBtn = e.target.closest('[data-event]');
   if (openBtn) openModal(openBtn.dataset.event);
   const chatBtn = e.target.closest('[data-chat-run]');
   if (chatBtn) openChat(chatBtn.dataset.chatRun);
+});
+
+$('mobile-menu-toggle').addEventListener('click', () => {
+  const open = $('mobile-menu-toggle').getAttribute('aria-expanded') !== 'true';
+  $('mobile-menu-toggle').setAttribute('aria-expanded', String(open));
+  $('main-nav').classList.toggle('open', open);
+  document.querySelector('.top-nav').classList.toggle('mobile-nav-open', open);
 });
 
 function formatDate(value) {
@@ -247,6 +263,24 @@ $('organizer-form').addEventListener('submit', async e => {
   e.preventDefault();
   if (!isAdmin()) return toast('هذه العملية متاحة للأدمن فقط');
 
+  const imageFile = $('org-image-file').files?.[0];
+  const acceptedImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (imageFile && !acceptedImageTypes.includes(imageFile.type)) return toast('اختر صورة JPG أو PNG أو WebP.');
+  if (imageFile && imageFile.size > 5 * 1024 * 1024) return toast('يجب ألا يتجاوز حجم الصورة 5 ميغابايت.');
+
+  let uploadedImagePath = null;
+  let imageUrl = $('org-image').value.trim() || null;
+  if (imageFile) {
+    const extension = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[imageFile.type];
+    uploadedImagePath = `${state.user.id}/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await db.storage.from('runmate-run-images').upload(uploadedImagePath, imageFile, { contentType: imageFile.type, upsert: false });
+    if (uploadError) {
+      console.error('Run image upload failed:', uploadError.statusCode || 'unknown');
+      return toast('تعذّر رفع صورة الجَرية. حاول مجدداً.');
+    }
+    imageUrl = db.storage.from('runmate-run-images').getPublicUrl(uploadedImagePath).data.publicUrl;
+  }
+
   const date = $('org-date').value;
   const time = $('org-time').value;
   const startsAt = new Date(`${date}T${time}`).toISOString();
@@ -258,14 +292,20 @@ $('organizer-form').addEventListener('submit', async e => {
     distance_km: Number($('org-distance').value),
     seats_total: Number($('org-seats').value),
     price: $('org-price').value.trim(),
-    image_url: $('org-image').value.trim() || null,
+    image_url: imageUrl,
     admin_only_chat: $('org-admin-only').checked,
     organizer_name: state.profile.display_name,
     created_by: state.user.id
   };
 
   const { error } = await db.from('runs').insert(row);
-  if (error) return toast('لم يتم إنشاء الجَرية: ' + error.message);
+  if (error) {
+    if (uploadedImagePath) {
+      const { error: cleanupError } = await db.storage.from('runmate-run-images').remove([uploadedImagePath]);
+      if (cleanupError) console.error('Run image cleanup failed:', cleanupError.statusCode || 'unknown');
+    }
+    return toast('لم يتم إنشاء الجَرية: ' + error.message);
+  }
 
   $('organizer-form').reset();
   await refreshData();
@@ -394,6 +434,47 @@ $('clip-upload-form').addEventListener('submit', async event => {
   await loadClips();
 });
 
+$('profile-photo-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const file = $('profile-photo-file').files?.[0];
+  const status = $('profile-photo-status');
+  const accepted = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!file || !accepted.includes(file.type)) return status.textContent = 'اختر صورة JPG أو PNG أو WebP.';
+  if (file.size > 5 * 1024 * 1024) return status.textContent = 'يجب ألا يتجاوز حجم الصورة 5 ميغابايت.';
+
+  const extension = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[file.type];
+  const path = `${state.user.id}/${crypto.randomUUID()}.${extension}`;
+  const oldPath = state.profile?.avatar_path;
+  status.textContent = 'جارٍ رفع صورة الحساب...';
+  const { error: uploadError } = await db.storage.from('runmate-avatars').upload(path, file, { contentType: file.type, upsert: false });
+  if (uploadError) {
+    status.textContent = 'تعذّر رفع الصورة. حاول مجدداً.';
+    console.error('Profile photo upload failed:', uploadError.statusCode || 'unknown');
+    return;
+  }
+
+  const { data: updatedProfile, error: updateError } = await db.from('profiles').update({ avatar_path: path }).eq('id', state.user.id).select('*').single();
+  if (updateError) {
+    const { error: cleanupError } = await db.storage.from('runmate-avatars').remove([path]);
+    status.textContent = 'تعذّر حفظ صورة الحساب. حاول مجدداً.';
+    console.error('Profile photo update failed:', updateError.code || 'unknown', cleanupError ? 'Storage cleanup failed' : '');
+    return;
+  }
+
+  state.profile = updatedProfile;
+  const publicUrl = db.storage.from('runmate-avatars').getPublicUrl(path).data.publicUrl;
+  const name = state.profile.display_name || 'مستخدم RUNMATE';
+  const markup = `<img src="${escapeHtml(publicUrl)}" alt="صورة ${escapeHtml(name)}">`;
+  $('user-avatar-initials').innerHTML = markup;
+  $('profile-avatar-large').innerHTML = markup;
+  if (oldPath) {
+    const { error: removeError } = await db.storage.from('runmate-avatars').remove([oldPath]);
+    if (removeError) console.error('Old profile photo cleanup failed:', removeError.statusCode || 'unknown');
+  }
+  event.target.reset();
+  status.textContent = 'تم تحديث صورة الحساب.';
+});
+
 async function loadAdminPanel() {
   if (!isAdmin()) return;
   const pendingBox = $('admin-pending-clips');
@@ -419,11 +500,28 @@ async function loadAdminPanel() {
     console.error('Admin users query failed:', usersResult.error.code || 'unknown');
   } else {
     const users = usersResult.data || [];
-    usersBox.innerHTML = users.length ? `<table><thead><tr><th>الاسم</th><th>الدور</th><th>تاريخ الإنشاء</th></tr></thead><tbody>${users.map(user => `<tr><td>${escapeHtml(user.display_name || 'عضو')}</td><td>${user.role === 'admin' ? 'مدير' : 'عضو'}</td><td>${escapeHtml(formatDate(user.created_at))}</td></tr>`).join('')}</tbody></table>` : '<p class="empty-state">لا يوجد مستخدمون.</p>';
+    usersBox.innerHTML = users.length ? `<table><thead><tr><th>الاسم</th><th>الدور</th><th>تاريخ الإنشاء</th>${isOwner() ? '<th>إدارة الدور</th>' : ''}</tr></thead><tbody>${users.map(user => `<tr><td>${escapeHtml(user.display_name || 'عضو')}</td><td>${user.role === 'owner' ? 'مالك' : user.role === 'admin' ? 'مدير' : 'عضو'}</td><td>${escapeHtml(formatDate(user.created_at))}</td>${isOwner() ? `<td><select data-role-choice="${escapeHtml(user.id)}" aria-label="دور ${escapeHtml(user.display_name || 'عضو')}"><option value="member" ${user.role === 'member' ? 'selected' : ''}>عضو</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>أدمن</option><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>مالك</option></select><button class="secondary-btn role-save-btn" type="button" data-save-role="${escapeHtml(user.id)}">حفظ الدور</button></td>` : ''}</tr>`).join('')}</tbody></table>` : '<p class="empty-state">لا يوجد مستخدمون.</p>';
   }
 }
 
 document.addEventListener('click', async event => {
+  const roleButton = event.target.closest('[data-save-role]');
+  if (roleButton) {
+    if (!isOwner()) return toast('إدارة الأدوار متاحة للمالك فقط.');
+    const role = roleButton.closest('tr')?.querySelector('[data-role-choice]')?.value;
+    if (!role) return toast('اختر دورًا صالحًا.');
+    roleButton.disabled = true;
+    const { error } = await db.rpc('set_profile_role', { target_profile_id: roleButton.dataset.saveRole, requested_role: role });
+    if (error) {
+      roleButton.disabled = false;
+      toast(error.message?.includes('last owner') ? 'لا يمكن إزالة دور آخر مالك.' : 'تعذّر تحديث الدور.');
+      console.error('Role update failed:', error.code || 'unknown', error.message || '');
+      return;
+    }
+    toast('تم تحديث الدور.');
+    await loadAdminPanel();
+    return;
+  }
   const button = event.target.closest('[data-review-clip]');
   if (!button || !isAdmin()) return;
   button.disabled = true;
@@ -451,6 +549,7 @@ $('resend-confirmation-btn').addEventListener('click', async () => {
   }
   showMessage('إذا كان الحساب بحاجة إلى التأكيد، ستصلك رسالة على بريدك الإلكتروني.');
 });
+
 
 
 
