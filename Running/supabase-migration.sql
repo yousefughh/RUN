@@ -5,7 +5,8 @@ ALTER TABLE public.runs ADD COLUMN IF NOT EXISTS seats_booked integer NOT NULL D
 
 -- Keep available seats in sync with bookings and reject overbooking.
 CREATE OR REPLACE FUNCTION public.sync_run_seats_booked()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $sync$\nBEGIN
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $sync$
+BEGIN
   IF TG_OP = 'INSERT' THEN
     UPDATE public.runs
     SET seats_booked = seats_booked + 1
@@ -19,7 +20,8 @@ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $sync$
     RETURN OLD;
   END IF;
   RETURN NULL;
-END;\n$sync$;
+END;
+$sync$;
 DROP TRIGGER IF EXISTS bookings_sync_run_seats_after_insert ON public.bookings;
 DROP TRIGGER IF EXISTS bookings_sync_run_seats_after_delete ON public.bookings;
 CREATE TRIGGER bookings_sync_run_seats_after_insert
