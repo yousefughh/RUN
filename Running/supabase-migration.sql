@@ -235,6 +235,7 @@ VALUES ('runmate-avatars', 'runmate-avatars', false, 5242880, ARRAY['image/jpeg'
 ON CONFLICT (id) DO UPDATE SET public = false, file_size_limit = EXCLUDED.file_size_limit,
 allowed_mime_types = EXCLUDED.allowed_mime_types;
 DROP POLICY IF EXISTS "Profile photos are public" ON storage.objects;
+DROP POLICY IF EXISTS "Profile photos are private to their owner and admins" ON storage.objects;
 DROP POLICY IF EXISTS "Users upload their own profile photos" ON storage.objects;
 DROP POLICY IF EXISTS "Users delete their own profile photos" ON storage.objects;
 CREATE POLICY "Profile photos are private to their owner and admins" ON storage.objects FOR SELECT TO authenticated
