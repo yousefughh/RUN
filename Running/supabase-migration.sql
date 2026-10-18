@@ -34,6 +34,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.set_profile_role(target_profile_id uuid, requested_role text)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 BEGIN
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('runmate-owner-role-change', 0));
   IF auth.uid() IS NULL OR NOT EXISTS (
     SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'owner'
   ) THEN
