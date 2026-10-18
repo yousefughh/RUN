@@ -333,6 +333,22 @@ revoke select on table public.messages from public, anon, authenticated;
 grant select (id, run_id, body, created_at) on table public.messages to authenticated;
 revoke insert, update, delete on table public.messages from public, anon, authenticated;
 grant insert (run_id, user_id, body) on table public.messages to authenticated;
+
+-- Enable live chat updates for the browser's filtered INSERT subscription.
+do $
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (
+       select 1 from pg_publication_tables
+       where pubname = 'supabase_realtime'
+         and schemaname = 'public'
+         and tablename = 'messages'
+     ) then
+    execute 'alter publication supabase_realtime add table public.messages';
+  elsif not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    raise notice 'supabase_realtime publication is missing; enable Realtime for public.messages in Supabase.';
+  end if;
+end $;
 -- RUNMATE compatibility and Clips migration. Safe to re-run; preserves users and existing profiles.
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone text;
 DO $$
