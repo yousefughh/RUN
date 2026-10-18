@@ -508,7 +508,7 @@ document.addEventListener('click', async event => {
   const roleButton = event.target.closest('[data-save-role]');
   if (roleButton) {
     if (!isOwner()) return toast('إدارة الأدوار متاحة للمالك فقط.');
-    const role = document.querySelector(`[data-role-choice="${CSS.escape(roleButton.dataset.saveRole)}"]`)?.value;
+    const role = roleButton.closest('tr')?.querySelector('[data-role-choice]')?.value;
     if (!role) return toast('اختر دورًا صالحًا.');
     roleButton.disabled = true;
     const { error } = await db.rpc('set_profile_role', { target_profile_id: roleButton.dataset.saveRole, requested_role: role });
