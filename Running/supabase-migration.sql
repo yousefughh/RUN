@@ -393,4 +393,20 @@ REVOKE ALL ON TABLE public.messages FROM PUBLIC, anon, authenticated;
 GRANT SELECT (id, run_id, body, created_at) ON TABLE public.messages TO authenticated;
 GRANT INSERT (run_id, user_id, body) ON TABLE public.messages TO authenticated;
 
+-- Enable live chat updates for the browser's filtered INSERT subscription.
+DO $
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime')
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_publication_tables
+       WHERE pubname = 'supabase_realtime'
+         AND schemaname = 'public'
+         AND tablename = 'messages'
+     ) THEN
+    EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE public.messages';
+  ELSIF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    RAISE NOTICE 'supabase_realtime publication is missing; enable Realtime for public.messages in Supabase.';
+  END IF;
+END $;
+
 
