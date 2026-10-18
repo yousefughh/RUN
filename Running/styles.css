@@ -53,7 +53,7 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .user-menu { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .avatar, .avatar-large { position: relative; display: grid; place-items: center; flex: 0 0 auto; aspect-ratio: 1 / 1; overflow: hidden; border-radius: 50%; background: rgba(255, 94, 58, .16); color: var(--primary); font-weight: 800; border: 1px solid rgba(255, 94, 58, .32); }
 .avatar { width: 36px; height: 36px; }
-.avatar img, .avatar-large img { display: block; width: 100%; height: 100%; min-width: 100%; min-height: 100%; border-radius: 50%; object-fit: cover; object-position: center; }
+.avatar img, .avatar-large img { position: absolute; inset: 1px; display: block; width: calc(100% - 2px); height: calc(100% - 2px); min-width: 0; min-height: 0; border-radius: 50%; object-fit: cover; object-position: center; }
 .logout-btn { padding: 9px 12px; color: var(--text-muted); background: transparent; border: 1px solid var(--border-color); border-radius: 9px; }
 .logout-btn:hover { color: white; border-color: var(--primary); }
 .main-content { width: min(1180px, 100%); margin: 0 auto; padding: 26px clamp(16px, 4vw, 36px) 60px; }
