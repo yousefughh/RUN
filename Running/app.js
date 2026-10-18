@@ -1,4 +1,4 @@
-/* RUNMATE + Supabase Client Config */
+/* Stride + Supabase Client Config */
 const SUPABASE_URL = 'https://trqrpoployvsuuitffji.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_H54WIGq4spz51QFkSjmR8w_ohdXdv90';
 const AUTH_REDIRECT_URL = 'https://yousefughh.github.io/RUN/';
@@ -10,6 +10,15 @@ const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const isAdmin = () => ['admin', 'owner'].includes(state.profile?.role);
 const isOwner = () => state.profile?.role === 'owner';
+
+async function getPrivateAvatarUrl(path) {
+  const { data, error } = await db.storage.from('runmate-avatars').createSignedUrl(path, 86400);
+  if (error) {
+    console.error('Profile photo unavailable:', error.statusCode || 'unknown');
+    return '';
+  }
+  return data?.signedUrl || '';
+}
 
 function showMessage(message, target = 'auth-message') {
   const el = $(target);
@@ -110,17 +119,17 @@ async function loadSession(session) {
   state.profile = profile;
   $('auth-screen').style.display = 'none';$('app-shell').classList.add('authenticated');
 
-  const name = profile.display_name || 'مستخدم RUNMATE';
+  const name = profile.display_name || 'مستخدم Stride';
   const email = state.user.email || '';
   const initial = Array.from(name)[0] || 'U';
 
-  const avatarUrl = profile.avatar_path ? db.storage.from('runmate-avatars').getPublicUrl(profile.avatar_path).data.publicUrl : '';
+  const avatarUrl = profile.avatar_path ? await getPrivateAvatarUrl(profile.avatar_path) : '';
   const avatarMarkup = avatarUrl ? `<img src="${escapeHtml(avatarUrl)}" alt="صورة ${escapeHtml(name)}">` : escapeHtml(initial);
   $('user-avatar-initials').innerHTML = avatarMarkup;
   $('profile-avatar-large').innerHTML = avatarMarkup;
   $('profile-name').textContent = name;
   $('profile-email').textContent = email;
-  $('profile-role').textContent = state.profile.role === 'owner' ? 'مالك RUNMATE' : isAdmin() ? 'حساب أدمن' : 'عضو RUNMATE';
+  $('profile-role').textContent = state.profile.role === 'owner' ? 'مالك Stride' : isAdmin() ? 'حساب أدمن' : 'عضو Stride';
 
   document.querySelectorAll('.admin-only').forEach(el => el.hidden = !isAdmin());
 
@@ -131,8 +140,8 @@ async function loadSession(session) {
 
 async function refreshData() {
   const [eventsRes, bookingsRes] = await Promise.all([
-    db.from('runs').select('*').order('starts_at', { ascending: true }),
-    db.from('bookings').select('run_id, runs(*)').eq('user_id', state.user.id)
+    db.from('runs').select('id,title,starts_at,location,distance_km,seats_total,seats_booked,run_status,duration_minutes,price,image_url,admin_only_chat,organizer_name,created_at').order('starts_at', { ascending: true }),
+    db.from('bookings').select('run_id, runs(id,title,starts_at,location,distance_km,seats_total,seats_booked,run_status,duration_minutes,price,image_url,admin_only_chat,organizer_name,created_at)').eq('user_id', state.user.id)
   ]);
 
   if (eventsRes.error) return toast('تعذر تحميل الجريات: ' + eventsRes.error.message);
@@ -153,7 +162,7 @@ function navigateTo(pageId) {
   document.querySelectorAll('[data-page]').forEach(item => item.classList.toggle('active', item.dataset.page === pageId));
   
   const names = { clips: 'Clips', admin: 'Admin', home: 'الرئيسية', tickets: 'حجوزاتي', chats: 'المحادثات', profile: 'الملف الشخصي', organizer: 'إدارة الجريات' };
-  $('crumb-active').textContent = names[pageId] || 'RUNMATE';
+  $('crumb-active').textContent = names[pageId] || 'Stride';
 
   if (pageId === 'chats') renderChatsList();
   if (pageId === 'clips') loadClips();
@@ -181,9 +190,10 @@ function formatDate(value) {
 
 function createRunCard(run) {
   const seats = Math.max(0, Number(run.seats_total || 0) - Number(run.seats_booked || 0));
+  const seatText = seats === 0 ? 'التذاكر انتهت' : `${seats} تذكرة متاحة`;
   return `<article class="run-card">
-    <div class="run-image"><img loading="lazy" decoding="async" src="${escapeHtml(run.image_url || 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=600&auto=format&fit=crop&q=80')}" alt=""><span class="run-badge">${seats} مقعد متاح</span></div>
-    <div class="run-info"><div class="run-org">✦ ${escapeHtml(run.organizer_name || 'RUNMATE')}</div>
+    <div class="run-image"><img loading="lazy" decoding="async" src="${escapeHtml(run.image_url || 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=600&auto=format&fit=crop&q=80')}" alt=""><span class="run-badge ${seats === 0 ? 'sold-out' : ''}">${seatText}</span></div>
+    <div class="run-info"><div class="run-org">✦ ${escapeHtml(run.organizer_name || 'Stride')}</div>
     <h3>${escapeHtml(run.title)}</h3><div class="run-detail"><span>◷ ${escapeHtml(formatDate(run.starts_at))}</span><span>⌖ ${escapeHtml(run.location)} · ${escapeHtml(run.distance_km)} كم</span></div>
     <div class="run-foot"><div class="run-price">${escapeHtml(run.price || 'مجانية')}</div><button class="run-open" data-event="${escapeHtml(run.id)}">التفاصيل ↙</button></div></div></article>`;
 }
@@ -191,20 +201,9 @@ function createRunCard(run) {
 function renderEvents() {
   const query = ($('search')?.value || '').trim().toLowerCase();
   const list = state.events.filter(run => `${run.title} ${run.location}`.toLowerCase().includes(query));
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayTime = today.getTime();
   const groups = { upcoming: [], current: [], previous: [] };
   list.forEach(run => {
-    const runDate = new Date(run.starts_at);
-    if (Number.isNaN(runDate.getTime())) {
-      groups.upcoming.push(run);
-      return;
-    }
-    runDate.setHours(0, 0, 0, 0);
-    if (runDate.getTime() > todayTime) groups.upcoming.push(run);
-    else if (runDate.getTime() === todayTime) groups.current.push(run);
-    else groups.previous.push(run);
+    groups[getRunCategory(run)].push(run);
   });
   const sections = [
     ['upcoming-runs', groups.upcoming, 'لا توجد جريات قادمة تطابق بحثك.'],
@@ -219,49 +218,80 @@ function renderEvents() {
 }
 if ($('search'))$('search').addEventListener('input', renderEvents);
 
+function getRunCategory(run, now = Date.now()) {
+  if (['upcoming', 'current', 'previous'].includes(run.run_status)) return run.run_status;
+  const startsAt = new Date(run.starts_at).getTime();
+  if (!Number.isFinite(startsAt) || now < startsAt) return 'upcoming';
+  const durationMs = Math.max(15, Number(run.duration_minutes) || 90) * 60_000;
+  return now < startsAt + durationMs ? 'current' : 'previous';
+}
+setInterval(() => { if (state.events.length) renderEvents(); }, 60_000);
+
 function openModal(id) {
   const run = state.events.find(item => item.id === id);
   if (!run) return;
   const booked = state.bookings.some(b => b.id === run.id);
   const remaining = Math.max(0, Number(run.seats_total || 0) - Number(run.seats_booked || 0));
+  const ticketText = remaining === 0 ? 'التذاكر انتهت' : `المقاعد المتبقية: ${remaining}`;
 
   $('modal-content').innerHTML = `
     <div class="modal-body">
       <h2>${escapeHtml(run.title)}</h2>
-      <p class="muted-text">منظم الجَرية: ${escapeHtml(run.organizer_name || 'RUNMATE')}</p>
+      <p class="muted-text">منظم الجَرية: ${escapeHtml(run.organizer_name || 'Stride')}</p>
       <p>◷ الموعد: ${escapeHtml(formatDate(run.starts_at))}</p>
       <p>⌖ التجمع: ${escapeHtml(run.location)}</p>
       <p>المسافة: ${escapeHtml(run.distance_km)} كم</p>
-      <p>المقاعد المتبقية: ${remaining}</p>
+      <p>${ticketText}</p>
       <p>السعر: ${escapeHtml(run.price || 'مجانية')}</p>
-      <button class="primary-btn" id="book-now-btn" ${!booked && remaining < 1 ? 'disabled' : ''}>${booked ? 'إلغاء الحجز' : 'حجز مكان الآن'}</button>
-      ${isAdmin() ? `<button class="secondary-btn" id="toggle-readonly">${run.admin_only_chat ? 'السماح للأعضاء بالكتابة في الشات' : 'جعل الشات للقراءة فقط'}</button>` : ''}
+      <button class="primary-btn" id="book-now-btn" ${!booked && remaining < 1 ? 'disabled' : ''}>${booked ? 'إلغاء الحجز' : remaining < 1 ? 'التذاكر انتهت' : 'حجز مكان الآن'}</button>
+      ${isAdmin() ? `<label class="run-status-control">حالة الجَرية
+        <select id="run-status-choice">
+          <option value="automatic" ${run.run_status === 'automatic' ? 'selected' : ''}>تلقائي حسب الموعد</option>
+          <option value="upcoming" ${run.run_status === 'upcoming' ? 'selected' : ''}>قادمة يدويًا</option>
+          <option value="current" ${run.run_status === 'current' ? 'selected' : ''}>حالية يدويًا</option>
+          <option value="previous" ${run.run_status === 'previous' ? 'selected' : ''}>سابقة يدويًا</option>
+        </select>
+      </label><label class="run-status-control">مدة الجَرية بالدقائق
+        <input id="run-duration-choice" type="number" min="15" max="1440" value="${Math.min(1440, Math.max(15, Number(run.duration_minutes) || 90))}">
+      </label><button class="secondary-btn" id="save-run-settings">حفظ حالة الجَرية</button>` : ''}
     </div>`;
 
   $('book-now-btn').onclick = () => toggleBooking(run, booked);
-  if (isAdmin()) $('toggle-readonly').onclick = () => toggleReadOnly(run);$('modal').classList.add('active');
+  if (isAdmin()) $('save-run-settings').onclick = () => saveRunSettings(run);
+  $('modal').classList.add('active');
 }
 
 async function toggleBooking(run, booked) {
   if (booked) {
     const { error } = await db.from('bookings').delete().eq('run_id', run.id).eq('user_id', state.user.id);
-    if (error) return toast(error.message);
+    if (error) return toast(error.code === '23505' ? 'أنت مسجل بالفعل في هذه الجَرية.' : 'تعذّر إلغاء الحجز. حاول مرة أخرى.');
     toast('تم إلغاء الحجز');
   } else {
     const { error } = await db.from('bookings').insert({ run_id: run.id, user_id: state.user.id });
-    if (error) return toast(error.message);
+    if (error) return toast(error.message?.includes('full') ? 'التذاكر انتهت.' : error.code === '23505' ? 'أنت مسجل بالفعل في هذه الجَرية.' : 'تعذّر إتمام الحجز. حاول مرة أخرى.');
     toast('تم الحجز بنجاح');
   }
   $('modal').classList.remove('active');
   await refreshData();
 }
 
+async function saveRunSettings(run) {
+  const duration = Number($('run-duration-choice').value);
+  if (!Number.isInteger(duration) || duration < 15 || duration > 1440) return toast('مدة الجَرية لازم تكون من 15 إلى 1440 دقيقة.');
+  const { error } = await db.from('runs').update({ run_status: $('run-status-choice').value, duration_minutes: duration }).eq('id', run.id);
+  if (error) return toast('تعذّر حفظ حالة الجَرية.');
+  $('modal').classList.remove('active');
+  await refreshData();
+  toast('تم تحديث حالة الجَرية.');
+}
+
 async function toggleReadOnly(run) {
   const { error } = await db.from('runs').update({ admin_only_chat: !run.admin_only_chat }).eq('id', run.id);
-  if (error) return toast(error.message);
+  if (error) return toast('تعذّر تحديث صلاحية الكتابة في الشات.');
   toast('تم تحديث إعداد المحادثة');
   $('modal').classList.remove('active');
   await refreshData();
+  if ($('page-chats').classList.contains('active')) await openChat(run.id);
 }
 
 $('modal-close').addEventListener('click', () =>$('modal').classList.remove('active'));
@@ -301,7 +331,9 @@ $('organizer-form').addEventListener('submit', async e => {
     seats_total: Number($('org-seats').value),
     price: $('org-price').value.trim(),
     image_url: imageUrl,
-    admin_only_chat: $('org-admin-only').checked,
+    admin_only_chat: false,
+    run_status: $('org-status').value,
+    duration_minutes: Number($('org-duration').value),
     organizer_name: state.profile.display_name,
     created_by: state.user.id
   };
@@ -318,7 +350,7 @@ $('organizer-form').addEventListener('submit', async e => {
   $('organizer-form').reset();
   await refreshData();
   navigateTo('home');
-  toast('تم إنشاء الجَرية بنجاح');
+  toast('تم إنشاء الجَرية وتسجيلك فيها تلقائيًا. الشات جاهز لك.');
 });
 
 /* المحادثات */
@@ -335,15 +367,16 @@ async function renderChatsList() {
 
 async function openChat(runId) {
   state.activeChatRun = runId;
-  const run = state.bookings.find(item => item.id === runId);
+  const run = state.bookings.find(item => item.id === runId) || state.events.find(item => item.id === runId);
   if (!run && !isAdmin()) return toast('المحادثة متاحة للمشاركين الذين حجزوا فقط');
 
   navigateTo('chats');
   await renderChatsList();
 
-  $('chat-panel').innerHTML = '<div class="chat-messages" id="chat-messages"><p class="empty-state">جارٍ تحميل الرسائل...</p></div><form id="chat-form" class="chat-form"><input id="chat-text" maxlength="2000" placeholder="اكتب رسالة..." required><button class="primary-btn" type="submit">إرسال</button></form>';
+  $('chat-panel').innerHTML = `<header class="chat-header"><div><h3>${escapeHtml(run?.title || 'محادثة الجَرية')}</h3><p class="muted-text">${run?.admin_only_chat ? 'الكتابة للأدمن والمنظّم فقط' : 'المشاركون يستطيعون الكتابة'}</p></div>${isAdmin() ? `<button class="secondary-btn" id="toggle-readonly" type="button">${run?.admin_only_chat ? 'السماح للمشاركين بالكتابة' : 'قصر الكتابة على الأدمن والمنظّم'}</button>` : ''}</header><div class="chat-messages" id="chat-messages"><p class="empty-state">جارٍ تحميل الرسائل...</p></div><form id="chat-form" class="chat-form"><input id="chat-text" maxlength="2000" placeholder="اكتب رسالة..." required><button class="primary-btn" type="submit">إرسال</button></form>`;
+  if (isAdmin()) $('toggle-readonly').onclick = () => toggleReadOnly(run);
 
-  const { data, error } = await db.from('messages').select('id,body,created_at,user_id,profiles(display_name)').eq('run_id', runId).order('created_at', { ascending: true });
+  const { data, error } = await db.from('messages').select('id,body,created_at').eq('run_id', runId).order('created_at', { ascending: false }).limit(300);
   if (error) { $('chat-messages').innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`; return; }
 
   const isReadOnly = !!run?.admin_only_chat && !isAdmin();
@@ -354,7 +387,7 @@ async function openChat(runId) {
   }
 
   $('chat-messages').innerHTML = data?.length 
-    ? data.map(msg => `<div class="message ${msg.user_id === state.user.id ? 'mine' : ''}"><b>${escapeHtml(msg.profiles?.display_name || 'مستخدم')}</b><p>${escapeHtml(msg.body)}</p><small>${escapeHtml(formatDate(msg.created_at))}</small></div>`).join('') 
+    ? [...data].reverse().map(msg => `<div class="message"><b>عضو في Stride</b><p>${escapeHtml(msg.body)}</p><small>${escapeHtml(formatDate(msg.created_at))}</small></div>`).join('') 
     : '<p class="empty-state">لا توجد رسائل بعد. ابدأوا المحادثة!</p>';
 
   $('chat-messages').scrollTop =$('chat-messages').scrollHeight;
@@ -391,7 +424,7 @@ async function loadClips() {
   const box = $('clips-list');
   if (!box || !state.user) return;
   box.innerHTML = '<p class="empty-state">جارٍ تحميل Clips...</p>';
-  const { data, error } = await db.from('clips').select('id,user_id,storage_path,caption,media_type,status,created_at').order('created_at', { ascending: false }).limit(60);
+  const { data, error } = await db.from('clips').select('id,storage_path,caption,media_type,status,created_at').order('created_at', { ascending: false }).limit(60);
   if (error) {
     box.innerHTML = '<p class="empty-state">تعذّر تحميل المقاطع. حاول مجدداً لاحقاً.</p>';
     console.error('Clips query failed:', error.code || 'unknown');
@@ -409,7 +442,7 @@ async function loadClips() {
 function clipCard(clip, reviewMode) {
   const media = clip.signedUrl ? (clip.media_type === 'video'
     ? `<video src="${escapeHtml(clip.signedUrl)}" controls preload="metadata" playsinline></video>`
-    : `<img src="${escapeHtml(clip.signedUrl)}" alt="مقطع من مجتمع RUNMATE" loading="lazy">`) : '<div class="empty-state">تعذّر تحميل الملف</div>';
+    : `<img src="${escapeHtml(clip.signedUrl)}" alt="مقطع من مجتمع Stride" loading="lazy">`) : '<div class="empty-state">تعذّر تحميل الملف</div>';
   const status = `<span class="clip-status ${escapeHtml(clip.status)}">${clip.status === 'pending' ? 'قيد المراجعة' : clip.status === 'approved' ? 'مقبول' : 'مرفوض'}</span>`;
   const actions = reviewMode && clip.status === 'pending' ? `<div class="clip-actions"><button class="primary-btn" data-review-clip="${escapeHtml(clip.id)}" data-status="approved">قبول</button><button class="secondary-btn" data-review-clip="${escapeHtml(clip.id)}" data-status="rejected">رفض</button></div>` : '';
   return `<article class="clip-card">${media}<div class="clip-card-body">${status}<p>${escapeHtml(clip.caption || '')}</p><small>${escapeHtml(formatDate(clip.created_at))}</small>${actions}</div></article>`;
@@ -472,9 +505,13 @@ $('profile-photo-form').addEventListener('submit', async event => {
   }
 
   state.profile = updatedProfile;
-  const publicUrl = db.storage.from('runmate-avatars').getPublicUrl(path).data.publicUrl;
-  const name = state.profile.display_name || 'مستخدم RUNMATE';
-  const markup = `<img src="${escapeHtml(publicUrl)}" alt="صورة ${escapeHtml(name)}">`;
+  const privateUrl = await getPrivateAvatarUrl(path);
+  if (!privateUrl) {
+    await db.from('profiles').update({ avatar_path: oldPath || null }).eq('id', state.user.id);
+    return status.textContent = 'تم رفع الصورة لكن تعذّر إنشاء رابط عرض آمن. حاول مجدداً.';
+  }
+  const name = state.profile.display_name || 'مستخدم Stride';
+  const markup = `<img src="${escapeHtml(privateUrl)}" alt="صورة ${escapeHtml(name)}">`;
   $('user-avatar-initials').innerHTML = markup;
   $('profile-avatar-large').innerHTML = markup;
   if (oldPath) {
@@ -492,7 +529,7 @@ async function loadAdminPanel() {
   pendingBox.innerHTML = '<p class="empty-state">جارٍ التحميل...</p>';
   usersBox.innerHTML = '<p class="empty-state">جارٍ التحميل...</p>';
   const [clipsResult, usersResult] = await Promise.all([
-    db.from('clips').select('id,user_id,storage_path,caption,media_type,status,created_at').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
+    db.from('clips').select('id,storage_path,caption,media_type,status,created_at').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
     db.from('profiles').select('id,display_name,role,created_at').order('created_at', { ascending: false }).limit(100)
   ]);
   if (clipsResult.error) {
@@ -559,6 +596,7 @@ $('resend-confirmation-btn').addEventListener('click', async () => {
   }
   showMessage('إذا كان الحساب بحاجة إلى التأكيد، ستصلك رسالة على بريدك الإلكتروني.');
 });
+
 
 
 
