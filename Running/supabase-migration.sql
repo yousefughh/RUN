@@ -14,7 +14,48 @@ END $$;
 UPDATE public.profiles SET role = 'member' WHERE role = 'user';
 ALTER TABLE public.profiles ALTER COLUMN role SET DEFAULT 'member';
 ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
-ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('member', 'admin'));
+ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('member', 'admin', 'owner'));
+
+CREATE OR REPLACE FUNCTION public.protect_profile_role()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF NEW.role IS DISTINCT FROM OLD.role
+     AND auth.uid() IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM public.profiles p
+       WHERE p.id = auth.uid() AND p.role IN ('admin', 'owner')
+     ) THEN
+    RAISE EXCEPTION 'Only an administrator or owner can change account roles';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.set_profile_role(target_profile_id uuid, requested_role text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF auth.uid() IS NULL OR NOT EXISTS (
+    SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'owner'
+  ) THEN
+    RAISE EXCEPTION 'Only an owner can manage account roles';
+  END IF;
+  IF requested_role IS NULL OR requested_role NOT IN ('member', 'admin', 'owner') THEN
+    RAISE EXCEPTION 'Invalid account role';
+  END IF;
+  IF target_profile_id = auth.uid() AND requested_role <> 'owner' THEN
+    RAISE EXCEPTION 'An owner cannot remove their own owner role';
+  END IF;
+  IF requested_role <> 'owner'
+     AND EXISTS (SELECT 1 FROM public.profiles WHERE id = target_profile_id AND role = 'owner')
+     AND (SELECT count(*) FROM public.profiles WHERE role = 'owner') <= 1 THEN
+    RAISE EXCEPTION 'Cannot remove the last owner';
+  END IF;
+  UPDATE public.profiles SET role = requested_role WHERE id = target_profile_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Profile not found'; END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.set_profile_role(uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_profile_role(uuid, text) TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
@@ -60,13 +101,13 @@ DROP POLICY IF EXISTS "Admins can review clips" ON public.clips;
 CREATE POLICY "Approved clips are public; owners and admins can view own" ON public.clips
 FOR SELECT TO anon, authenticated USING (
   status = 'approved' OR auth.uid() = user_id OR
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner'))
 );
 CREATE POLICY "Members can submit clips" ON public.clips FOR INSERT TO authenticated
 WITH CHECK (auth.uid() = user_id AND (storage_path LIKE auth.uid()::text || '/%') AND status = 'pending' AND reviewed_at IS NULL AND reviewed_by IS NULL);
 CREATE POLICY "Admins can review clips" ON public.clips FOR UPDATE TO authenticated
-USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'))
-WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'));
+USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner')))
+WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner')));
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('runmate-clips', 'runmate-clips', false, 52428800,
@@ -83,12 +124,12 @@ CREATE POLICY "Users read their own clips and approved clips" ON storage.objects
 USING (bucket_id = 'runmate-clips' AND (
   (storage.foldername(name))[1] = auth.uid()::text OR
   EXISTS (SELECT 1 FROM public.clips c WHERE c.storage_path = name AND c.status = 'approved') OR
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner'))
 ));
 CREATE POLICY "Users delete their orphan clip uploads" ON storage.objects FOR DELETE TO authenticated
 USING (bucket_id = 'runmate-clips' AND (storage.foldername(name))[1] = auth.uid()::text AND NOT EXISTS (SELECT 1 FROM public.clips c WHERE c.storage_path = name));
 CREATE POLICY "Admins manage clip files" ON storage.objects FOR DELETE TO authenticated
-USING (bucket_id = 'runmate-clips' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'));
+USING (bucket_id = 'runmate-clips' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner')));
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('runmate-avatars', 'runmate-avatars', true, 5242880, ARRAY['image/jpeg','image/png','image/webp'])
@@ -114,8 +155,8 @@ DROP POLICY IF EXISTS "Admins delete run images" ON storage.objects;
 CREATE POLICY "Run images are public" ON storage.objects FOR SELECT TO anon, authenticated
 USING (bucket_id = 'runmate-run-images');
 CREATE POLICY "Admins upload run images" ON storage.objects FOR INSERT TO authenticated
-WITH CHECK (bucket_id = 'runmate-run-images' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'));
+WITH CHECK (bucket_id = 'runmate-run-images' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner')));
 CREATE POLICY "Admins delete run images" ON storage.objects FOR DELETE TO authenticated
-USING (bucket_id = 'runmate-run-images' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'));
+USING (bucket_id = 'runmate-run-images' AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'owner')));
 
 
