@@ -8,7 +8,7 @@ const chatAvatarUrls = new Map();
 let activeChatChannel = null;
 let chatRefreshJob = null;
 
-const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, authListener: false, loadingSessionUserId: null, clips: [], passwordRecovery: new URLSearchParams(location.hash.slice(1)).get('type') === 'recovery' };
+const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, participantsRunId: null, authListener: false, loadingSessionUserId: null, clips: [], passwordRecovery: new URLSearchParams(location.hash.slice(1)).get('type') === 'recovery' };
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const isAdmin = () => ['admin', 'owner'].includes(state.profile?.role);
@@ -306,6 +306,7 @@ async function loadSession(session) {
   $('user-avatar-initials').innerHTML = avatarMarkup;
   $('profile-avatar-large').innerHTML = avatarMarkup;
   $('profile-name').textContent = name;
+  $('profile-display-name').value = name;
   $('profile-email').textContent = email;
   $('profile-role').textContent = state.profile.role === 'owner' ? 'Stride Owner' : isAdmin() ? 'Admin' : 'Stride Member';
 
@@ -331,6 +332,119 @@ async function refreshData() {
   renderChatsList();
 }
 
+function populateParticipantsRunSelect() {
+  const select = $('participants-run-select');
+  if (!select) return;
+  const selectedRunId = state.participantsRunId;
+  select.innerHTML = state.events.length
+    ? state.events.map(run => `<option value="${escapeHtml(run.id)}">${escapeHtml(run.title)} · ${escapeHtml(formatDate(run.starts_at))}</option>`).join('')
+    : '<option value="">No runs available</option>';
+  if (selectedRunId && state.events.some(run => run.id === selectedRunId)) {
+    select.value = selectedRunId;
+  } else if (state.events.length) {
+    state.participantsRunId = state.events[0].id;
+    select.value = state.participantsRunId;
+  }
+}
+
+function openParticipants(runId) {
+  state.participantsRunId = runId;
+  navigateTo('participants');
+}
+
+async function loadParticipants(runId) {
+  const box = $('participants-list');
+  const blockedBox = $('participants-blocked-list');
+  if (!box || !runId || !state.user) {
+    if (box) box.innerHTML = '<p class="empty-state">No runs are available yet.</p>';
+    return;
+  }
+  box.innerHTML = '<p class="empty-state">Loading participants...</p>';
+  const run = state.events.find(item => item.id === runId);
+  const result = isAdmin()
+    ? await db.rpc('list_run_moderation_participants', { p_run_id: runId })
+    : await db.rpc('get_run_participants', { p_run_id: runId });
+  if (state.participantsRunId !== runId || $('page-participants')?.classList.contains('active') !== true) return;
+  if (result.error) {
+    box.innerHTML = '<p class="empty-state">Could not load participants. Please try again.</p>';
+    console.error('Participant list query failed:', result.error.code || 'unknown');
+    return;
+  }
+  const participants = result.data || [];
+  const cards = await Promise.all(participants.map(async participant => {
+    const name = participant.display_name || 'Stride member';
+    const avatarUrl = participant.avatar_path ? await getChatAvatarUrl(participant.avatar_path) : '';
+    const avatar = avatarUrl
+      ? `<img class="participant-avatar" src="${escapeHtml(avatarUrl)}" alt="Photo of ${escapeHtml(name)}">`
+      : `<span class="participant-avatar participant-avatar-fallback" aria-hidden="true">${escapeHtml(Array.from(name.trim())[0] || 'U')}</span>`;
+    const action = isAdmin() && participant.participant_id
+      ? `<button class="danger-btn participant-remove-btn" type="button" data-remove-run-user="${escapeHtml(participant.participant_id)}" data-run-id="${escapeHtml(runId)}">Remove &amp; Block from Chat</button>`
+      : '';
+    return `<article class="participant-card">${avatar}<div><b>${escapeHtml(name)}</b><p class="muted-text">${escapeHtml(run?.title || 'Stride run')}</p></div>${action}</article>`;
+  }));
+  box.innerHTML = cards.length ? cards.join('') : '<p class="empty-state">No one has booked this run yet.</p>';
+
+  const moderationSection = document.querySelector('.participants-moderation');
+  if (!isAdmin() || !blockedBox || !moderationSection) return;
+  moderationSection.hidden = false;
+  blockedBox.innerHTML = '<p class="empty-state">Loading blocked members...</p>';
+  const blockedResult = await db.rpc('list_run_chat_bans', { p_run_id: runId });
+  if (state.participantsRunId !== runId) return;
+  if (blockedResult.error) {
+    blockedBox.innerHTML = '<p class="empty-state">Could not load blocked members.</p>';
+    console.error('Blocked participant list query failed:', blockedResult.error.code || 'unknown');
+    return;
+  }
+  const blocked = blockedResult.data || [];
+  blockedBox.innerHTML = blocked.length ? blocked.map(person =>
+    `<article class="participant-card participant-card-blocked"><div class="participant-avatar participant-avatar-fallback">${escapeHtml(Array.from((person.display_name || 'U').trim())[0] || 'U')}</div><div><b>${escapeHtml(person.display_name || 'Stride member')}</b><p class="muted-text">Blocked from ${escapeHtml(run?.title || 'this run')}</p></div><button class="secondary-btn participant-restore-btn" type="button" data-restore-run-user="${escapeHtml(person.participant_id)}" data-run-id="${escapeHtml(runId)}">Restore Chat Access</button></article>`
+  ).join('') : '<p class="empty-state">No one is blocked from this run chat.</p>';
+}
+
+$('participants-run-select').addEventListener('change', event => {
+  state.participantsRunId = event.target.value || null;
+  void loadParticipants(state.participantsRunId);
+});
+
+document.addEventListener('click', async event => {
+  const removeButton = event.target.closest('[data-remove-run-user]');
+  if (removeButton) {
+    if (!isAdmin()) return toast('Only admins and the owner can moderate a run.');
+    if (!window.confirm('Remove this participant from the run and block them from its chat?')) return;
+    removeButton.disabled = true;
+    const { error } = await db.rpc('moderate_run_participant', {
+      p_run_id: removeButton.dataset.runId,
+      p_user_id: removeButton.dataset.removeRunUser
+    });
+    if (error) {
+      removeButton.disabled = false;
+      console.error('Run moderation failed:', error.code || 'unknown');
+      return toast('Could not remove this participant. Please try again.');
+    }
+    toast('Participant removed and blocked from this run chat.');
+    await refreshData();
+    await loadParticipants(state.participantsRunId);
+    return;
+  }
+
+  const restoreButton = event.target.closest('[data-restore-run-user]');
+  if (restoreButton) {
+    if (!isAdmin()) return toast('Only admins and the owner can moderate a run.');
+    restoreButton.disabled = true;
+    const { error } = await db.rpc('restore_run_chat_member', {
+      p_run_id: restoreButton.dataset.runId,
+      p_user_id: restoreButton.dataset.restoreRunUser
+    });
+    if (error) {
+      restoreButton.disabled = false;
+      console.error('Run chat restore failed:', error.code || 'unknown');
+      return toast('Could not restore chat access. Please try again.');
+    }
+    toast('Chat access restored. The member can book the run again.');
+    await loadParticipants(state.participantsRunId);
+  }
+});
+
 function navigateTo(pageId) {
   if ((pageId === 'organizer' || pageId === 'admin') && !isAdmin()) {
     toast('Only admins can create runs');
@@ -340,12 +454,16 @@ function navigateTo(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${pageId}`));
   document.querySelectorAll('[data-page]').forEach(item => item.classList.toggle('active', item.dataset.page === pageId));
   
-  const names = { clips: 'Clips', admin: 'Admin', home: 'Home', tickets: 'My Runs', chats: 'Chats', profile: 'Profile', organizer: 'Manage Runs' };
+  const names = { clips: 'Clips', admin: 'Admin', home: 'Home', tickets: 'My Runs', chats: 'Chats', participants: 'Participants', profile: 'Profile', organizer: 'Manage Runs' };
   $('crumb-active').textContent = names[pageId] || 'Stride';
 
   if (pageId === 'chats') renderChatsList();
   if (pageId === 'clips') loadClips();
   if (pageId === 'admin') loadAdminPanel();
+  if (pageId === 'participants') {
+    populateParticipantsRunSelect();
+    void loadParticipants(state.participantsRunId);
+  }
 }
 
 document.addEventListener('click', e => {
@@ -355,6 +473,8 @@ document.addEventListener('click', e => {
     navigateTo(pageBtn.dataset.page);
   }
   if (e.target.closest('#user-avatar-initials')) navigateTo('profile');
+  const participantsBtn = e.target.closest('[data-participants-run]');
+  if (participantsBtn) openParticipants(participantsBtn.dataset.participantsRun);
   const openBtn = e.target.closest('[data-event]');
   if (openBtn) openModal(openBtn.dataset.event);
   const chatBtn = e.target.closest('[data-chat-run]');
@@ -374,7 +494,7 @@ function createRunCard(run) {
     <div class="run-image"><img loading="lazy" decoding="async" src="${escapeHtml(run.image_url || 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=600&auto=format&fit=crop&q=80')}" alt=""><span class="run-badge ${seats === 0 ? 'sold-out' : ''}">${seatText}</span></div>
     <div class="run-info"><div class="run-org">✦ Organized by Stride</div>
     <h3>${escapeHtml(run.title)}</h3><div class="run-detail"><span>◷ ${escapeHtml(formatDate(run.starts_at))}</span><span>⌖ ${escapeHtml(run.location)} · ${escapeHtml(run.distance_km)} km</span></div>
-    <div class="run-foot"><div class="run-price">${escapeHtml(run.price || 'Free')}</div><button class="run-open" data-event="${escapeHtml(run.id)}">Details ↙</button></div></div></article>`;
+    <div class="run-foot"><div class="run-price">${escapeHtml(run.price || 'Free')}</div><button class="run-open" data-participants-run="${escapeHtml(run.id)}">Participants</button><button class="run-open" data-event="${escapeHtml(run.id)}">Details</button></div></div></article>`;
 }
 
 function renderEvents() {
@@ -429,6 +549,7 @@ function openModal(id) {
       <p>Distance: ${escapeHtml(run.distance_km)} km</p>
       <p>${ticketText}</p>
       <p>Price: ${escapeHtml(run.price || 'Free')}</p>
+      <button class="secondary-btn" id="run-participants-btn" type="button">View Participants</button>
       <button class="primary-btn" id="book-now-btn" ${!booked && (remaining < 1 || bookingClosed) ? 'disabled' : ''}>${booked ? 'Cancel Booking' : remaining < 1 ? 'Sold out' : bookingClosed ? 'Booking closed' : 'Book a Spot'}</button>
       ${isAdmin() ? `<label class="run-status-control">Run status
         <select id="run-status-choice">
@@ -441,6 +562,7 @@ function openModal(id) {
         <button class="danger-btn" id="delete-run-btn" type="button">Permanently Delete Run</button>` : ''}
     </div>`;
 
+  $('run-participants-btn').onclick = () => { $('modal').classList.remove('active'); openParticipants(run.id); };
   $('book-now-btn').onclick = () => toggleBooking(run, booked);
   if (isAdmin()) {
     $('save-run-settings').onclick = () => saveRunSettings(run);
@@ -705,47 +827,82 @@ $('clip-upload-form').addEventListener('submit', async event => {
 
 $('profile-photo-form').addEventListener('submit', async event => {
   event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  const nameInput = $('profile-display-name');
+  const newName = nameInput.value.trim();
   const file = $('profile-photo-file').files?.[0];
   const status = $('profile-photo-status');
   const accepted = ['image/jpeg', 'image/png', 'image/webp'];
-  if (!file || !accepted.includes(file.type)) return status.textContent = 'Choose a JPG, PNG, or WebP image.';
-  if (file.size > 5 * 1024 * 1024) return status.textContent = 'The image must be no larger than 5 MB.';
+  if (!newName || newName.length > 50) return status.textContent = 'Enter a name from 1 to 50 characters.';
+  if (/[\u0000-\u001f\u007f]/.test(newName)) return status.textContent = 'The name contains unsupported characters.';
+  if (file && !accepted.includes(file.type)) return status.textContent = 'Choose a JPG, PNG, or WebP image.';
+  if (file && file.size > 5 * 1024 * 1024) return status.textContent = 'The image must be no larger than 5 MB.';
 
-  const extension = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[file.type];
-  const path = `${state.user.id}/${crypto.randomUUID()}.${extension}`;
+  button.disabled = true;
+  status.textContent = file ? 'Saving your profile...' : 'Saving your name...';
   const oldPath = state.profile?.avatar_path;
-  status.textContent = 'Uploading profile photo...';
-  const { error: uploadError } = await db.storage.from('runmate-avatars').upload(path, file, { contentType: file.type, upsert: false });
-  if (uploadError) {
-    status.textContent = 'Could not upload the photo. Please try again.';
-    console.error('Profile photo upload failed:', uploadError.statusCode || 'unknown');
+  let path = null;
+  if (file) {
+    const extension = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[file.type];
+    path = `${state.user.id}/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await db.storage.from('runmate-avatars').upload(path, file, { contentType: file.type, upsert: false });
+    if (uploadError) {
+      button.disabled = false;
+      status.textContent = 'Could not upload the photo. Please try again.';
+      console.error('Profile photo upload failed:', uploadError.statusCode || 'unknown');
+      return;
+    }
+  }
+
+  const updates = { display_name: newName };
+  if (path) updates.avatar_path = path;
+  const { data: updatedProfile, error: updateError } = await db.from('profiles')
+    .update(updates).eq('id', state.user.id)
+    .select('id,display_name,avatar_path,role,created_at').single();
+  if (updateError) {
+    if (path) await db.storage.from('runmate-avatars').remove([path]);
+    button.disabled = false;
+    status.textContent = 'Could not save your profile. Please try again.';
+    console.error('Profile update failed:', updateError.code || 'unknown');
     return;
   }
 
-  const { data: updatedProfile, error: updateError } = await db.from('profiles').update({ avatar_path: path }).eq('id', state.user.id).select('id,display_name,avatar_path,role,created_at').single();
-  if (updateError) {
-    const { error: cleanupError } = await db.storage.from('runmate-avatars').remove([path]);
-    status.textContent = 'Could not save your profile photo. Please try again.';
-    console.error('Profile photo update failed:', updateError.code || 'unknown', cleanupError ? 'Storage cleanup failed' : '');
-    return;
+  let privateUrl = '';
+  if (path) {
+    privateUrl = await getPrivateAvatarUrl(path);
+    if (!privateUrl) {
+      await db.from('profiles').update({ avatar_path: oldPath || null }).eq('id', state.user.id);
+      await db.storage.from('runmate-avatars').remove([path]);
+      button.disabled = false;
+      status.textContent = 'Name saved, but a secure photo link could not be created. Please try the photo again.';
+      state.profile = { ...updatedProfile, avatar_path: oldPath || null };
+      $('profile-name').textContent = newName;
+      return;
+    }
   }
 
   state.profile = updatedProfile;
-  const privateUrl = await getPrivateAvatarUrl(path);
-  if (!privateUrl) {
-    await db.from('profiles').update({ avatar_path: oldPath || null }).eq('id', state.user.id);
-    return status.textContent = 'Photo uploaded, but a secure viewing link could not be created. Please try again.';
+  $('profile-name').textContent = newName;
+  const initial = Array.from(newName)[0] || 'U';
+  const markup = path
+    ? `<img src="${escapeHtml(privateUrl)}" alt="Photo of ${escapeHtml(newName)}">`
+    : escapeHtml(initial);
+  if (path || !oldPath) {
+    $('user-avatar-initials').innerHTML = markup;
+    $('profile-avatar-large').innerHTML = markup;
+  } else {
+    $('user-avatar-initials').querySelector('img')?.setAttribute('alt', `Photo of ${newName}`);
+    $('profile-avatar-large').querySelector('img')?.setAttribute('alt', `Photo of ${newName}`);
   }
-  const name = state.profile.display_name || 'Stride user';
-  const markup = `<img src="${escapeHtml(privateUrl)}" alt="Photo of ${escapeHtml(name)}">`;
-  $('user-avatar-initials').innerHTML = markup;
-  $('profile-avatar-large').innerHTML = markup;
-  if (oldPath) {
+
+  if (path && oldPath) {
     const { error: removeError } = await db.storage.from('runmate-avatars').remove([oldPath]);
     if (removeError) console.error('Old profile photo cleanup failed:', removeError.statusCode || 'unknown');
   }
-  event.target.reset();
-  status.textContent = 'Profile photo updated.';
+  $('profile-photo-file').value = '';
+  button.disabled = false;
+  status.textContent = path ? 'Profile name and photo updated.' : 'Profile name updated.';
 });
 
 $('profile-logout-btn').addEventListener('click', async event => {
@@ -769,7 +926,7 @@ async function loadAdminPanel() {
   usersBox.innerHTML = '<p class="empty-state">Loading...</p>';
   const [clipsResult, usersResult] = await Promise.all([
     db.from('clips').select('id,storage_path,caption,media_type,status,created_at').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
-    db.from('profiles').select('id,display_name,role,created_at').order('created_at', { ascending: false }).limit(100)
+    db.from('profiles').select('id,display_name,role,created_at,is_banned').order('created_at', { ascending: false }).limit(100)
   ]);
   if (clipsResult.error) {
     pendingBox.innerHTML = '<p class="empty-state">Could not load the review queue.</p>';
@@ -786,11 +943,33 @@ async function loadAdminPanel() {
     console.error('Admin users query failed:', usersResult.error.code || 'unknown');
   } else {
     const users = usersResult.data || [];
-    usersBox.innerHTML = users.length ? `<table><thead><tr><th>Name</th><th>Role</th><th>Created</th>${isOwner() ? '<th>Manage Role</th>' : ''}</tr></thead><tbody>${users.map(user => `<tr><td>${escapeHtml(user.display_name || 'Member')}</td><td>${user.role === 'owner' ? 'Owner' : user.role === 'admin' ? 'Admin' : 'Member'}</td><td>${escapeHtml(formatDate(user.created_at))}</td>${isOwner() ? `<td><select data-role-choice="${escapeHtml(user.id)}" aria-label="Role for ${escapeHtml(user.display_name || 'Member')}"><option value="member" ${user.role === 'member' ? 'selected' : ''}>Member</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Owner</option></select><button class="secondary-btn role-save-btn" type="button" data-save-role="${escapeHtml(user.id)}">Save Role</button></td>` : ''}</tr>`).join('')}</tbody></table>` : '<p class="empty-state">No users found.</p>';
+    usersBox.innerHTML = users.length ? `<table><thead><tr><th>Name</th><th>Role</th><th>Access</th><th>Created</th>${isOwner() ? '<th>Manage Account</th>' : ''}</tr></thead><tbody>${users.map(user => `<tr><td>${escapeHtml(user.display_name || 'Member')}</td><td>${user.role === 'owner' ? 'Owner' : user.role === 'admin' ? 'Admin' : 'Member'}</td><td>${user.is_banned ? 'Blocked' : 'Active'}</td><td>${escapeHtml(formatDate(user.created_at))}</td>${isOwner() ? (user.role === 'owner' || user.id === state.user.id ? '<td>Protected owner</td>' : `<td class="admin-user-actions"><select data-role-choice="${escapeHtml(user.id)}" aria-label="Role for ${escapeHtml(user.display_name || 'Member')}"><option value="member" ${user.role === 'member' ? 'selected' : ''}>Member</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Owner</option></select><button class="secondary-btn role-save-btn" type="button" data-save-role="${escapeHtml(user.id)}">Save Role</button><button class="danger-btn account-access-btn" type="button" data-set-block="${escapeHtml(user.id)}" data-blocked="${user.is_banned ? 'false' : 'true'}">${user.is_banned ? 'Restore Access' : 'Block Access'}</button></td>`) : ''}</tr>`).join('')}</tbody></table>` : '<p class="empty-state">No users found.</p>';
   }
 }
 
 document.addEventListener('click', async event => {
+  const accessButton = event.target.closest('[data-set-block]');
+  if (accessButton) {
+    if (!isOwner()) return toast('Only the owner can block accounts.');
+    const shouldBlock = accessButton.dataset.blocked === 'true';
+    const confirmed = window.confirm(shouldBlock
+      ? 'Block this account from signing in and using Stride?'
+      : 'Restore this account’s access to Stride?');
+    if (!confirmed) return;
+    accessButton.disabled = true;
+    const { data, error } = await db.functions.invoke('manage-account-access', {
+      body: { user_id: accessButton.dataset.setBlock, blocked: shouldBlock }
+    });
+    if (error || data?.error) {
+      accessButton.disabled = false;
+      console.error('Account access update failed:', error?.message || data?.error || 'unknown');
+      toast('Could not update account access. Check that the access function is deployed.');
+      return;
+    }
+    toast(shouldBlock ? 'Account blocked.' : 'Account access restored.');
+    await loadAdminPanel();
+    return;
+  }
   const roleButton = event.target.closest('[data-save-role]');
   if (roleButton) {
     if (!isOwner()) return toast('Only the owner can manage roles.');

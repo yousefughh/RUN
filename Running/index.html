@@ -74,6 +74,7 @@
         <button data-page="clips">Clips</button>
         <button data-page="tickets">My Runs</button>
         <button data-page="chats">Chats</button>
+        <button data-page="participants">Participants</button>
         <button data-page="admin" class="admin-only" hidden>Admin</button>
         <button data-page="organizer" class="admin-only" hidden>Manage Runs</button>
       </nav>
@@ -120,6 +121,21 @@
             <p class="empty-state">Choose a run to chat with its participants.</p>
           </div>
         </div>
+      </section>
+
+      <section class="page" id="page-participants">
+        <div class="page-heading">
+          <h2>Run Participants</h2>
+          <p class="muted-text">See who is joining each Stride run.</p>
+        </div>
+        <label class="participants-run-picker">Choose a run
+          <select id="participants-run-select"></select>
+        </label>
+        <div id="participants-list" class="participants-grid"></div>
+        <section class="admin-only participants-moderation" hidden>
+          <h3>Blocked from this run chat</h3>
+          <div id="participants-blocked-list" class="participants-grid"></div>
+        </section>
       </section>
 
       <!-- Run management page (admins only) -->
@@ -182,9 +198,11 @@
           <p id="profile-email" class="muted-text">email@example.com</p>
           <span class="role-badge" id="profile-role">Stride Member</span>
           <form id="profile-photo-form" class="profile-photo-form">
+            <label for="profile-display-name">Name</label>
+            <input id="profile-display-name" type="text" maxlength="50" autocomplete="name" required placeholder="Your name">
             <label for="profile-photo-file">Profile photo (JPG, PNG or WebP, up to 5 MB)</label>
             <input id="profile-photo-file" type="file" accept="image/jpeg,image/png,image/webp">
-            <button class="primary-btn" type="submit">Upload Profile Photo</button>
+            <button class="primary-btn" type="submit">Save Profile</button>
             <p id="profile-photo-status" class="muted-text" aria-live="polite"></p>
           </form>
           <button class="danger-btn profile-logout-btn" id="profile-logout-btn" type="button">Sign Out</button>
