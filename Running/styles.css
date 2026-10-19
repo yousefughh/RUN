@@ -70,7 +70,6 @@ button.avatar { padding: 0; cursor: pointer; }
 @keyframes appear { from { opacity: .55; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .hero { position: relative; overflow: hidden; padding: clamp(38px, 5vw, 62px) clamp(28px, 5vw, 52px); margin-bottom: 30px; border: 1px solid #393939; border-radius: 18px; background: radial-gradient(ellipse at 16% 18%, rgba(255, 255, 255, .13), transparent 38%), linear-gradient(125deg, #252525, #101010 68%); }
 .hero::before { content: 'STRIDE  /  RUNNING COMMUNITY'; display: block; margin-bottom: 24px; direction: ltr; text-align: left; color: #bcbcbc; font: 600 10px/1 'Inter', sans-serif; letter-spacing: .2em; }
-.hero::after { content: '↗'; position: absolute; left: clamp(22px, 4vw, 44px); bottom: 18px; color: #f4f4f4; font: 300 34px/1 'Inter', sans-serif; }
 .hero h2 { position: relative; z-index: 1; font-size: clamp(26px, 4vw, 38px); margin-bottom: 10px; }
 .hero p { color: var(--text-muted); font-size: 16px; line-height: 1.8; }
 .section-title { font-size: 22px; font-weight: 800; margin: 0 0 18px; }
