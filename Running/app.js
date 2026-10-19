@@ -8,7 +8,7 @@ const chatAvatarUrls = new Map();
 let activeChatChannel = null;
 let chatRefreshJob = null;
 
-const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, authListener: false, loadingSessionUserId: null, clips: [], passwordRecovery: new URLSearchParams(location.hash.slice(1)).get('type') === 'recovery' };
+const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, participantsRunId: null, authListener: false, loadingSessionUserId: null, clips: [], passwordRecovery: new URLSearchParams(location.hash.slice(1)).get('type') === 'recovery' };
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const isAdmin = () => ['admin', 'owner'].includes(state.profile?.role);
@@ -332,6 +332,119 @@ async function refreshData() {
   renderChatsList();
 }
 
+function populateParticipantsRunSelect() {
+  const select = $('participants-run-select');
+  if (!select) return;
+  const selectedRunId = state.participantsRunId;
+  select.innerHTML = state.events.length
+    ? state.events.map(run => `<option value="${escapeHtml(run.id)}">${escapeHtml(run.title)} · ${escapeHtml(formatDate(run.starts_at))}</option>`).join('')
+    : '<option value="">No runs available</option>';
+  if (selectedRunId && state.events.some(run => run.id === selectedRunId)) {
+    select.value = selectedRunId;
+  } else if (state.events.length) {
+    state.participantsRunId = state.events[0].id;
+    select.value = state.participantsRunId;
+  }
+}
+
+function openParticipants(runId) {
+  state.participantsRunId = runId;
+  navigateTo('participants');
+}
+
+async function loadParticipants(runId) {
+  const box = $('participants-list');
+  const blockedBox = $('participants-blocked-list');
+  if (!box || !runId || !state.user) {
+    if (box) box.innerHTML = '<p class="empty-state">No runs are available yet.</p>';
+    return;
+  }
+  box.innerHTML = '<p class="empty-state">Loading participants...</p>';
+  const run = state.events.find(item => item.id === runId);
+  const result = isAdmin()
+    ? await db.rpc('list_run_moderation_participants', { p_run_id: runId })
+    : await db.rpc('get_run_participants', { p_run_id: runId });
+  if (state.participantsRunId !== runId || $('page-participants')?.classList.contains('active') !== true) return;
+  if (result.error) {
+    box.innerHTML = '<p class="empty-state">Could not load participants. Please try again.</p>';
+    console.error('Participant list query failed:', result.error.code || 'unknown');
+    return;
+  }
+  const participants = result.data || [];
+  const cards = await Promise.all(participants.map(async participant => {
+    const name = participant.display_name || 'Stride member';
+    const avatarUrl = participant.avatar_path ? await getChatAvatarUrl(participant.avatar_path) : '';
+    const avatar = avatarUrl
+      ? `<img class="participant-avatar" src="${escapeHtml(avatarUrl)}" alt="Photo of ${escapeHtml(name)}">`
+      : `<span class="participant-avatar participant-avatar-fallback" aria-hidden="true">${escapeHtml(Array.from(name.trim())[0] || 'U')}</span>`;
+    const action = isAdmin() && participant.participant_id
+      ? `<button class="danger-btn participant-remove-btn" type="button" data-remove-run-user="${escapeHtml(participant.participant_id)}" data-run-id="${escapeHtml(runId)}">Remove &amp; Block from Chat</button>`
+      : '';
+    return `<article class="participant-card">${avatar}<div><b>${escapeHtml(name)}</b><p class="muted-text">${escapeHtml(run?.title || 'Stride run')}</p></div>${action}</article>`;
+  }));
+  box.innerHTML = cards.length ? cards.join('') : '<p class="empty-state">No one has booked this run yet.</p>';
+
+  const moderationSection = document.querySelector('.participants-moderation');
+  if (!isAdmin() || !blockedBox || !moderationSection) return;
+  moderationSection.hidden = false;
+  blockedBox.innerHTML = '<p class="empty-state">Loading blocked members...</p>';
+  const blockedResult = await db.rpc('list_run_chat_bans', { p_run_id: runId });
+  if (state.participantsRunId !== runId) return;
+  if (blockedResult.error) {
+    blockedBox.innerHTML = '<p class="empty-state">Could not load blocked members.</p>';
+    console.error('Blocked participant list query failed:', blockedResult.error.code || 'unknown');
+    return;
+  }
+  const blocked = blockedResult.data || [];
+  blockedBox.innerHTML = blocked.length ? blocked.map(person =>
+    `<article class="participant-card participant-card-blocked"><div class="participant-avatar participant-avatar-fallback">${escapeHtml(Array.from((person.display_name || 'U').trim())[0] || 'U')}</div><div><b>${escapeHtml(person.display_name || 'Stride member')}</b><p class="muted-text">Blocked from ${escapeHtml(run?.title || 'this run')}</p></div><button class="secondary-btn participant-restore-btn" type="button" data-restore-run-user="${escapeHtml(person.participant_id)}" data-run-id="${escapeHtml(runId)}">Restore Chat Access</button></article>`
+  ).join('') : '<p class="empty-state">No one is blocked from this run chat.</p>';
+}
+
+$('participants-run-select').addEventListener('change', event => {
+  state.participantsRunId = event.target.value || null;
+  void loadParticipants(state.participantsRunId);
+});
+
+document.addEventListener('click', async event => {
+  const removeButton = event.target.closest('[data-remove-run-user]');
+  if (removeButton) {
+    if (!isAdmin()) return toast('Only admins and the owner can moderate a run.');
+    if (!window.confirm('Remove this participant from the run and block them from its chat?')) return;
+    removeButton.disabled = true;
+    const { error } = await db.rpc('moderate_run_participant', {
+      p_run_id: removeButton.dataset.runId,
+      p_user_id: removeButton.dataset.removeRunUser
+    });
+    if (error) {
+      removeButton.disabled = false;
+      console.error('Run moderation failed:', error.code || 'unknown');
+      return toast('Could not remove this participant. Please try again.');
+    }
+    toast('Participant removed and blocked from this run chat.');
+    await refreshData();
+    await loadParticipants(state.participantsRunId);
+    return;
+  }
+
+  const restoreButton = event.target.closest('[data-restore-run-user]');
+  if (restoreButton) {
+    if (!isAdmin()) return toast('Only admins and the owner can moderate a run.');
+    restoreButton.disabled = true;
+    const { error } = await db.rpc('restore_run_chat_member', {
+      p_run_id: restoreButton.dataset.runId,
+      p_user_id: restoreButton.dataset.restoreRunUser
+    });
+    if (error) {
+      restoreButton.disabled = false;
+      console.error('Run chat restore failed:', error.code || 'unknown');
+      return toast('Could not restore chat access. Please try again.');
+    }
+    toast('Chat access restored. The member can book the run again.');
+    await loadParticipants(state.participantsRunId);
+  }
+});
+
 function navigateTo(pageId) {
   if ((pageId === 'organizer' || pageId === 'admin') && !isAdmin()) {
     toast('Only admins can create runs');
@@ -341,12 +454,16 @@ function navigateTo(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${pageId}`));
   document.querySelectorAll('[data-page]').forEach(item => item.classList.toggle('active', item.dataset.page === pageId));
   
-  const names = { clips: 'Clips', admin: 'Admin', home: 'Home', tickets: 'My Runs', chats: 'Chats', profile: 'Profile', organizer: 'Manage Runs' };
+  const names = { clips: 'Clips', admin: 'Admin', home: 'Home', tickets: 'My Runs', chats: 'Chats', participants: 'Participants', profile: 'Profile', organizer: 'Manage Runs' };
   $('crumb-active').textContent = names[pageId] || 'Stride';
 
   if (pageId === 'chats') renderChatsList();
   if (pageId === 'clips') loadClips();
   if (pageId === 'admin') loadAdminPanel();
+  if (pageId === 'participants') {
+    populateParticipantsRunSelect();
+    void loadParticipants(state.participantsRunId);
+  }
 }
 
 document.addEventListener('click', e => {
@@ -356,6 +473,8 @@ document.addEventListener('click', e => {
     navigateTo(pageBtn.dataset.page);
   }
   if (e.target.closest('#user-avatar-initials')) navigateTo('profile');
+  const participantsBtn = e.target.closest('[data-participants-run]');
+  if (participantsBtn) openParticipants(participantsBtn.dataset.participantsRun);
   const openBtn = e.target.closest('[data-event]');
   if (openBtn) openModal(openBtn.dataset.event);
   const chatBtn = e.target.closest('[data-chat-run]');
@@ -375,7 +494,7 @@ function createRunCard(run) {
     <div class="run-image"><img loading="lazy" decoding="async" src="${escapeHtml(run.image_url || 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=600&auto=format&fit=crop&q=80')}" alt=""><span class="run-badge ${seats === 0 ? 'sold-out' : ''}">${seatText}</span></div>
     <div class="run-info"><div class="run-org">✦ Organized by Stride</div>
     <h3>${escapeHtml(run.title)}</h3><div class="run-detail"><span>◷ ${escapeHtml(formatDate(run.starts_at))}</span><span>⌖ ${escapeHtml(run.location)} · ${escapeHtml(run.distance_km)} km</span></div>
-    <div class="run-foot"><div class="run-price">${escapeHtml(run.price || 'Free')}</div><button class="run-open" data-event="${escapeHtml(run.id)}">Details ↙</button></div></div></article>`;
+    <div class="run-foot"><div class="run-price">${escapeHtml(run.price || 'Free')}</div><button class="run-open" data-participants-run="${escapeHtml(run.id)}">Participants</button><button class="run-open" data-event="${escapeHtml(run.id)}">Details</button></div></div></article>`;
 }
 
 function renderEvents() {
@@ -430,6 +549,7 @@ function openModal(id) {
       <p>Distance: ${escapeHtml(run.distance_km)} km</p>
       <p>${ticketText}</p>
       <p>Price: ${escapeHtml(run.price || 'Free')}</p>
+      <button class="secondary-btn" id="run-participants-btn" type="button">View Participants</button>
       <button class="primary-btn" id="book-now-btn" ${!booked && (remaining < 1 || bookingClosed) ? 'disabled' : ''}>${booked ? 'Cancel Booking' : remaining < 1 ? 'Sold out' : bookingClosed ? 'Booking closed' : 'Book a Spot'}</button>
       ${isAdmin() ? `<label class="run-status-control">Run status
         <select id="run-status-choice">
@@ -442,6 +562,7 @@ function openModal(id) {
         <button class="danger-btn" id="delete-run-btn" type="button">Permanently Delete Run</button>` : ''}
     </div>`;
 
+  $('run-participants-btn').onclick = () => { $('modal').classList.remove('active'); openParticipants(run.id); };
   $('book-now-btn').onclick = () => toggleBooking(run, booked);
   if (isAdmin()) {
     $('save-run-settings').onclick = () => saveRunSettings(run);
