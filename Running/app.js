@@ -340,7 +340,7 @@ function navigateTo(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${pageId}`));
   document.querySelectorAll('[data-page]').forEach(item => item.classList.toggle('active', item.dataset.page === pageId));
   
-  const names = { clips: 'Clips', admin: 'Admin', home: 'Home', tickets: 'My Bookings', chats: 'Chats', profile: 'Profile', organizer: 'Manage Runs' };
+  const names = { clips: 'Clips', admin: 'Admin', home: 'Home', tickets: 'My Runs', chats: 'Chats', profile: 'Profile', organizer: 'Manage Runs' };
   $('crumb-active').textContent = names[pageId] || 'Stride';
 
   if (pageId === 'chats') renderChatsList();
