@@ -187,3 +187,8 @@ button.avatar { padding: 0; cursor: pointer; }
 .admin-users select { min-width: 90px; padding: 8px; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-main); background: var(--bg-input); }
 .admin-users .role-save-btn { width: auto; min-width: 90px; margin: 0 6px 0 0; padding: 8px 10px; font-size: 13px; }
 @media (max-width: 700px) { .clips-grid { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: .65rem; } }
+
+.admin-user-actions { min-width: 220px; }
+.admin-user-actions .account-access-btn { width: auto; min-width: 120px; display: inline-flex; margin: 6px 6px 0 0; padding: 8px 10px; font-size: 13px; }
+.admin-user-actions .account-access-btn:hover { border-color: #aaa; background: #333; }
+#profile-display-name { width: 100%; min-width: 0; padding: 12px 14px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 9px; color: var(--text-main); font-size: 15px; }
