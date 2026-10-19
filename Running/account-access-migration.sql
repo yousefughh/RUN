@@ -249,7 +249,7 @@ BEGIN
   SELECT COALESCE(NULLIF(p.display_name, ''), 'Stride member'), p.avatar_path
   FROM public.bookings b
   JOIN public.profiles p ON p.id = b.user_id
-  WHERE b.run_id = p_run_id
+  WHERE b.run_id = p_run_id AND p.is_banned = false
   ORDER BY lower(COALESCE(NULLIF(p.display_name, ''), 'Stride member'));
 END;
 $$;
@@ -268,7 +268,7 @@ BEGIN
   SELECT p.id, COALESCE(NULLIF(p.display_name, ''), 'Stride member'), p.avatar_path
   FROM public.bookings b
   JOIN public.profiles p ON p.id = b.user_id
-  WHERE b.run_id = p_run_id AND p.role <> 'owner' AND p.id <> auth.uid()
+  WHERE b.run_id = p_run_id AND p.is_banned = false AND p.role <> 'owner' AND p.id <> auth.uid()
   ORDER BY lower(COALESCE(NULLIF(p.display_name, ''), 'Stride member'));
 END;
 $$;
