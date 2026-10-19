@@ -1,0 +1,4 @@
+project_id = "trqrpoployvsuuitffji"
+
+[functions.manage-account-access]
+verify_jwt = true
