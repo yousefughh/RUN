@@ -182,9 +182,11 @@
           <p id="profile-email" class="muted-text">email@example.com</p>
           <span class="role-badge" id="profile-role">Stride Member</span>
           <form id="profile-photo-form" class="profile-photo-form">
+            <label for="profile-display-name">Name</label>
+            <input id="profile-display-name" type="text" maxlength="50" autocomplete="name" required placeholder="Your name">
             <label for="profile-photo-file">Profile photo (JPG, PNG or WebP, up to 5 MB)</label>
             <input id="profile-photo-file" type="file" accept="image/jpeg,image/png,image/webp">
-            <button class="primary-btn" type="submit">Upload Profile Photo</button>
+            <button class="primary-btn" type="submit">Save Profile</button>
             <p id="profile-photo-status" class="muted-text" aria-live="polite"></p>
           </form>
           <button class="danger-btn profile-logout-btn" id="profile-logout-btn" type="button">Sign Out</button>
