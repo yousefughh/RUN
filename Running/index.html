@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=19">
+  <link rel="stylesheet" href="styles.css?v=20">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -74,7 +74,6 @@
         <button data-page="clips">Clips</button>
         <button data-page="tickets">My Runs</button>
         <button data-page="chats">Chats</button>
-        <button data-page="participants">Participants</button>
         <button data-page="admin" class="admin-only" hidden>Admin</button>
         <button data-page="organizer" class="admin-only" hidden>Manage Runs</button>
       </nav>
@@ -121,21 +120,6 @@
             <p class="empty-state">Choose a run to chat with its participants.</p>
           </div>
         </div>
-      </section>
-
-      <section class="page" id="page-participants">
-        <div class="page-heading">
-          <h2>Run Participants</h2>
-          <p class="muted-text">See who is joining each Stride run.</p>
-        </div>
-        <label class="participants-run-picker">Choose a run
-          <select id="participants-run-select"></select>
-        </label>
-        <div id="participants-list" class="participants-grid"></div>
-        <section class="admin-only participants-moderation" hidden>
-          <h3>Blocked from this run chat</h3>
-          <div id="participants-blocked-list" class="participants-grid"></div>
-        </section>
       </section>
 
       <!-- Run management page (admins only) -->
@@ -231,6 +215,6 @@
     <div class="toast" id="toast"></div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=20"></script>
 </body>
 </html>
