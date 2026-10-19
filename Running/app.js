@@ -8,7 +8,7 @@ const chatAvatarUrls = new Map();
 let activeChatChannel = null;
 let chatRefreshJob = null;
 
-const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, participantsRunId: null, authListener: false, loadingSessionUserId: null, clips: [], passwordRecovery: new URLSearchParams(location.hash.slice(1)).get('type') === 'recovery' };
+const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, activeChatView: 'messages', activeChatParticipantOnly: false, participantsRunId: null, authListener: false, loadingSessionUserId: null, clips: [], passwordRecovery: new URLSearchParams(location.hash.slice(1)).get('type') === 'recovery' };
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const isAdmin = () => ['admin', 'owner'].includes(state.profile?.role);
@@ -332,29 +332,14 @@ async function refreshData() {
   renderChatsList();
 }
 
-function populateParticipantsRunSelect() {
-  const select = $('participants-run-select');
-  if (!select) return;
-  const selectedRunId = state.participantsRunId;
-  select.innerHTML = state.events.length
-    ? state.events.map(run => `<option value="${escapeHtml(run.id)}">${escapeHtml(run.title)} · ${escapeHtml(formatDate(run.starts_at))}</option>`).join('')
-    : '<option value="">No runs available</option>';
-  if (selectedRunId && state.events.some(run => run.id === selectedRunId)) {
-    select.value = selectedRunId;
-  } else if (state.events.length) {
-    state.participantsRunId = state.events[0].id;
-    select.value = state.participantsRunId;
-  }
-}
-
 function openParticipants(runId) {
   state.participantsRunId = runId;
-  navigateTo('participants');
+  void openChat(runId, 'participants');
 }
 
 async function loadParticipants(runId) {
-  const box = $('participants-list');
-  const blockedBox = $('participants-blocked-list');
+  const box = $('chat-participants-list');
+  const blockedBox = $('chat-participants-blocked-list');
   if (!box || !runId || !state.user) {
     if (box) box.innerHTML = '<p class="empty-state">No runs are available yet.</p>';
     return;
@@ -364,7 +349,7 @@ async function loadParticipants(runId) {
   const result = isAdmin()
     ? await db.rpc('list_run_moderation_participants', { p_run_id: runId })
     : await db.rpc('get_run_participants', { p_run_id: runId });
-  if (state.participantsRunId !== runId || $('page-participants')?.classList.contains('active') !== true) return;
+  if (state.participantsRunId !== runId || !box.isConnected) return;
   if (result.error) {
     box.innerHTML = '<p class="empty-state">Could not load participants. Please try again.</p>';
     console.error('Participant list query failed:', result.error.code || 'unknown');
@@ -384,7 +369,7 @@ async function loadParticipants(runId) {
   }));
   box.innerHTML = cards.length ? cards.join('') : '<p class="empty-state">No one has booked this run yet.</p>';
 
-  const moderationSection = document.querySelector('.participants-moderation');
+  const moderationSection = $('chat-participants-moderation');
   if (!isAdmin() || !blockedBox || !moderationSection) return;
   moderationSection.hidden = false;
   blockedBox.innerHTML = '<p class="empty-state">Loading blocked members...</p>';
@@ -400,11 +385,6 @@ async function loadParticipants(runId) {
     `<article class="participant-card participant-card-blocked"><div class="participant-avatar participant-avatar-fallback">${escapeHtml(Array.from((person.display_name || 'U').trim())[0] || 'U')}</div><div><b>${escapeHtml(person.display_name || 'Stride member')}</b><p class="muted-text">Blocked from ${escapeHtml(run?.title || 'this run')}</p></div><button class="secondary-btn participant-restore-btn" type="button" data-restore-run-user="${escapeHtml(person.participant_id)}" data-run-id="${escapeHtml(runId)}">Restore Chat Access</button></article>`
   ).join('') : '<p class="empty-state">No one is blocked from this run chat.</p>';
 }
-
-$('participants-run-select').addEventListener('change', event => {
-  state.participantsRunId = event.target.value || null;
-  void loadParticipants(state.participantsRunId);
-});
 
 document.addEventListener('click', async event => {
   const removeButton = event.target.closest('[data-remove-run-user]');
@@ -454,16 +434,12 @@ function navigateTo(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${pageId}`));
   document.querySelectorAll('[data-page]').forEach(item => item.classList.toggle('active', item.dataset.page === pageId));
   
-  const names = { clips: 'Clips', admin: 'Admin', home: 'Home', tickets: 'My Runs', chats: 'Chats', participants: 'Participants', profile: 'Profile', organizer: 'Manage Runs' };
+  const names = { clips: 'Clips', admin: 'Admin', home: 'Home', tickets: 'My Runs', chats: 'Chats', profile: 'Profile', organizer: 'Manage Runs' };
   $('crumb-active').textContent = names[pageId] || 'Stride';
 
   if (pageId === 'chats') renderChatsList();
   if (pageId === 'clips') loadClips();
   if (pageId === 'admin') loadAdminPanel();
-  if (pageId === 'participants') {
-    populateParticipantsRunSelect();
-    void loadParticipants(state.participantsRunId);
-  }
 }
 
 document.addEventListener('click', e => {
@@ -708,47 +684,71 @@ async function renderChatsList() {
   if (error) { $('chat-runs').innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`; return; }
 
   const runs = (data || []).map(row => row.runs).filter(Boolean);
-  $('chat-runs').innerHTML = runs.length 
-    ? runs.map(run => `<button class="chat-run-btn ${state.activeChatRun === run.id ? 'active' : ''}" data-chat-run="${escapeHtml(run.id)}"><b>${escapeHtml(run.title)}</b><small>${run.admin_only_chat ? 'Admins only' : 'Participant chat'}</small></button>`).join('') 
+  $('chat-runs').innerHTML = runs.length
+    ? runs.map(run => `<div class="chat-run-item"><button class="chat-run-btn ${state.activeChatRun === run.id ? 'active' : ''}" type="button" data-chat-run="${escapeHtml(run.id)}"><b>${escapeHtml(run.title)}</b><small>${run.admin_only_chat ? 'Admins only' : 'Participant chat'}</small></button><button class="chat-participants-btn" type="button" data-participants-run="${escapeHtml(run.id)}">View participants</button></div>`).join('')
     : '<p class="empty-state">Book a run to see its chat here.</p>';
 }
 
-async function openChat(runId) {
+async function renderChatView(run, view) {
+  const content = $('chat-view-content');
+  const viewButton = $('chat-view-toggle');
+  if (!content || !viewButton || state.activeChatRun !== run.id) return;
+
+  state.activeChatView = view;
+  if (view === 'participants') {
+    viewButton.textContent = state.activeChatParticipantOnly ? 'Back to runs' : 'Back to chat';
+    content.innerHTML = `<section class="chat-participants-view"><h3>Participants</h3><div id="chat-participants-list" class="participants-grid"></div><section id="chat-participants-moderation" class="participants-moderation" hidden><h4>Blocked from this run chat</h4><div id="chat-participants-blocked-list" class="participants-grid"></div></section></section>`;
+    await loadParticipants(run.id);
+    return;
+  }
+
+  viewButton.textContent = 'View participants';
+  const isReadOnly = !!run.admin_only_chat && !isAdmin();
+  content.innerHTML = `${isReadOnly ? '<p class="readonly-note">This chat is read-only. Only admins and organizers can send messages.</p>' : ''}<div class="chat-messages" id="chat-messages"><p class="empty-state">Loading messages...</p></div><form id="chat-form" class="chat-form"><input id="chat-text" maxlength="2000" placeholder="Write a message..." required><button class="primary-btn" type="submit">Send</button></form>`;
+  $('chat-form').hidden = isReadOnly;
+  const loaded = await refreshChatMessages(run.id, true);
+  if (!loaded || state.activeChatRun !== run.id || state.activeChatView !== 'messages') return;
+
+  $('chat-form').onsubmit = async event => {
+    event.preventDefault();
+    const body = $('chat-text').value.trim();
+    if (!body) return;
+
+    const { error: sendError } = await db.from('messages').insert({ run_id: run.id, user_id: state.user.id, body });
+    if (sendError) return toast('Could not send the message: ' + sendError.message);
+    $('chat-text').value = '';
+    if (!await refreshChatMessages(run.id)) toast('Message sent, but the chat could not be refreshed.');
+  };
+}
+
+async function openChat(runId, initialView = 'messages') {
   const run = state.bookings.find(item => item.id === runId) || state.events.find(item => item.id === runId);
+  const canChat = state.bookings.some(item => item.id === runId) || isAdmin();
   if (!run && !isAdmin()) return toast('Only booked participants can access this chat');
+  if (initialView !== 'participants' && !canChat) return toast('Only booked participants can access this chat');
 
   await stopChatRealtime();
   state.activeChatRun = runId;
+  state.activeChatParticipantOnly = initialView === 'participants' && !canChat;
+  state.participantsRunId = runId;
 
   navigateTo('chats');
   await renderChatsList();
 
-  $('chat-panel').innerHTML = `<header class="chat-header"><div><h3>${escapeHtml(run?.title || 'Run chat')}</h3><p class="muted-text">${run?.admin_only_chat ? 'Only admins and organizers can post' : 'Participants can post'}</p></div>${isAdmin() ? `<button class="secondary-btn" id="toggle-readonly" type="button">${run?.admin_only_chat ? 'Allow participants to post' : 'Limit posting to admins and organizers'}</button>` : ''}</header><div class="chat-messages" id="chat-messages"><p class="empty-state">Loading messages...</p></div><form id="chat-form" class="chat-form"><input id="chat-text" maxlength="2000" placeholder="Write a message..." required><button class="primary-btn" type="submit">Send</button></form>`;
+  $('chat-panel').innerHTML = `<header class="chat-header"><div><h3>${escapeHtml(run?.title || 'Run chat')}</h3><p class="muted-text">${run?.admin_only_chat ? 'Only admins and organizers can post' : 'Participants can post'}</p></div><div class="chat-header-actions"><button class="secondary-btn" id="chat-view-toggle" type="button">View participants</button>${isAdmin() ? `<button class="secondary-btn" id="toggle-readonly" type="button">${run?.admin_only_chat ? 'Allow participants to post' : 'Limit posting to admins and organizers'}</button>` : ''}</div></header><div class="chat-view-content" id="chat-view-content"></div>`;
   if (isAdmin()) $('toggle-readonly').onclick = () => toggleReadOnly(run);
-
-  subscribeToRunChat(runId);
-  const loaded = await refreshChatMessages(runId, true);
-  if (!loaded) return;
-
-  const isReadOnly = !!run?.admin_only_chat && !isAdmin();
-  $('chat-form').hidden = isReadOnly;
-  
-  if (isReadOnly) {
-    $('chat-panel').insertAdjacentHTML('afterbegin', '<p class="readonly-note">This chat is read-only. Only admins and organizers can send messages.</p>');
-  }
-
-  $('chat-form').onsubmit = async e => {
-    e.preventDefault();
-    const body = $('chat-text').value.trim();
-    if (!body) return;
-
-    const { error: sendError } = await db.from('messages').insert({ run_id: runId, user_id: state.user.id, body });
-    if (sendError) return toast('Could not send the message: ' + sendError.message);
-    $('chat-text').value = '';
-    if (!await refreshChatMessages(runId)) toast('Message sent, but the chat could not be refreshed.');
+  $('chat-view-toggle').onclick = () => {
+    if (state.activeChatParticipantOnly) {
+      navigateTo('home');
+      return;
+    }
+    const nextView = state.activeChatView === 'participants' ? 'messages' : 'participants';
+    void renderChatView(run, nextView);
   };
-}
 
+  if (canChat) subscribeToRunChat(runId);
+  await renderChatView(run, initialView);
+}
 async function startApp() {
   if (!db) {
     $('auth-screen').style.display = 'flex';$('app-shell').classList.remove('authenticated');
