@@ -213,3 +213,139 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.get_run_chat_messages(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_run_chat_messages(uuid) TO authenticated;
+
+
+-- Run-specific moderation and participant directory.
+CREATE TABLE IF NOT EXISTS public.run_chat_bans (
+  run_id uuid NOT NULL REFERENCES public.runs(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  banned_by uuid NOT NULL REFERENCES auth.users(id),
+  reason text NOT NULL DEFAULT 'Removed by a run moderator',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (run_id, user_id)
+);
+ALTER TABLE public.run_chat_bans ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.run_chat_bans FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.is_run_chat_blocked(p_run_id uuid, p_user_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.run_chat_bans b
+    WHERE b.run_id = p_run_id AND b.user_id = p_user_id
+  );
+$$;
+REVOKE ALL ON FUNCTION public.is_run_chat_blocked(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_run_chat_blocked(uuid, uuid) TO authenticated;
+
+-- Any active member may view the attendee names and photos, but not emails or phone numbers.
+CREATE OR REPLACE FUNCTION public.get_run_participants(p_run_id uuid)
+RETURNS TABLE (display_name text, avatar_path text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF NOT public.is_account_active() THEN
+    RAISE EXCEPTION 'account_access_denied';
+  END IF;
+  RETURN QUERY
+  SELECT COALESCE(NULLIF(p.display_name, ''), 'Stride member'), p.avatar_path
+  FROM public.bookings b
+  JOIN public.profiles p ON p.id = b.user_id
+  WHERE b.run_id = p_run_id
+  ORDER BY lower(COALESCE(NULLIF(p.display_name, ''), 'Stride member'));
+END;
+$$;
+REVOKE ALL ON FUNCTION public.get_run_participants(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_run_participants(uuid) TO authenticated;
+
+-- Moderator-only RPCs return IDs only inside protected account-management operations.
+CREATE OR REPLACE FUNCTION public.list_run_moderation_participants(p_run_id uuid)
+RETURNS TABLE (participant_id uuid, display_name text, avatar_path text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF NOT public.is_admin_or_owner() THEN
+    RAISE EXCEPTION 'moderator_required';
+  END IF;
+  RETURN QUERY
+  SELECT p.id, COALESCE(NULLIF(p.display_name, ''), 'Stride member'), p.avatar_path
+  FROM public.bookings b
+  JOIN public.profiles p ON p.id = b.user_id
+  WHERE b.run_id = p_run_id AND p.role <> 'owner'
+  ORDER BY lower(COALESCE(NULLIF(p.display_name, ''), 'Stride member'));
+END;
+$$;
+REVOKE ALL ON FUNCTION public.list_run_moderation_participants(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.list_run_moderation_participants(uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.list_run_chat_bans(p_run_id uuid)
+RETURNS TABLE (participant_id uuid, display_name text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF NOT public.is_admin_or_owner() THEN
+    RAISE EXCEPTION 'moderator_required';
+  END IF;
+  RETURN QUERY
+  SELECT b.user_id, COALESCE(NULLIF(p.display_name, ''), 'Stride member')
+  FROM public.run_chat_bans b
+  JOIN public.profiles p ON p.id = b.user_id
+  WHERE b.run_id = p_run_id
+  ORDER BY b.created_at DESC;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.list_run_chat_bans(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.list_run_chat_bans(uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.moderate_run_participant(p_run_id uuid, p_user_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE target_role text;
+BEGIN
+  IF NOT public.is_admin_or_owner() THEN
+    RAISE EXCEPTION 'moderator_required';
+  END IF;
+  IF p_user_id = auth.uid() THEN
+    RAISE EXCEPTION 'cannot_remove_self';
+  END IF;
+  SELECT role INTO target_role FROM public.profiles WHERE id = p_user_id;
+  IF target_role IS NULL THEN RAISE EXCEPTION 'participant_not_found'; END IF;
+  IF target_role = 'owner' THEN RAISE EXCEPTION 'owner_account_protected'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.bookings WHERE run_id = p_run_id AND user_id = p_user_id) THEN
+    RAISE EXCEPTION 'participant_not_booked';
+  END IF;
+  INSERT INTO public.run_chat_bans (run_id, user_id, banned_by)
+  VALUES (p_run_id, p_user_id, auth.uid())
+  ON CONFLICT (run_id, user_id) DO UPDATE SET banned_by = EXCLUDED.banned_by,
+    reason = EXCLUDED.reason, created_at = now();
+  DELETE FROM public.bookings WHERE run_id = p_run_id AND user_id = p_user_id;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.moderate_run_participant(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.moderate_run_participant(uuid, uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.restore_run_chat_member(p_run_id uuid, p_user_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF NOT public.is_admin_or_owner() THEN
+    RAISE EXCEPTION 'moderator_required';
+  END IF;
+  DELETE FROM public.run_chat_bans WHERE run_id = p_run_id AND user_id = p_user_id;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.restore_run_chat_member(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.restore_run_chat_member(uuid, uuid) TO authenticated;
+
+-- A removed participant cannot immediately book the same run again.
+DROP POLICY IF EXISTS "Users can book themselves" ON public.bookings;
+CREATE POLICY "Users can book themselves" ON public.bookings FOR INSERT TO authenticated
+WITH CHECK (public.is_account_active() AND auth.uid() = user_id
+  AND NOT public.is_run_chat_blocked(run_id, auth.uid()));
+
+-- Allow active signed-in members to load photos of booked participants for the directory.
+CREATE OR REPLACE FUNCTION public.can_view_run_chat_avatar(avatar_file_path text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT public.is_account_active() AND EXISTS (
+    SELECT 1
+    FROM public.profiles participant
+    JOIN public.bookings b ON b.user_id = participant.id
+    WHERE participant.avatar_path = avatar_file_path
+  );
+$$;
+REVOKE ALL ON FUNCTION public.can_view_run_chat_avatar(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_view_run_chat_avatar(text) TO authenticated;
