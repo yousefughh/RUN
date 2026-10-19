@@ -306,6 +306,7 @@ async function loadSession(session) {
   $('user-avatar-initials').innerHTML = avatarMarkup;
   $('profile-avatar-large').innerHTML = avatarMarkup;
   $('profile-name').textContent = name;
+  $('profile-display-name').value = name;
   $('profile-email').textContent = email;
   $('profile-role').textContent = state.profile.role === 'owner' ? 'Stride Owner' : isAdmin() ? 'Admin' : 'Stride Member';
 
@@ -705,47 +706,82 @@ $('clip-upload-form').addEventListener('submit', async event => {
 
 $('profile-photo-form').addEventListener('submit', async event => {
   event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  const nameInput = $('profile-display-name');
+  const newName = nameInput.value.trim();
   const file = $('profile-photo-file').files?.[0];
   const status = $('profile-photo-status');
   const accepted = ['image/jpeg', 'image/png', 'image/webp'];
-  if (!file || !accepted.includes(file.type)) return status.textContent = 'Choose a JPG, PNG, or WebP image.';
-  if (file.size > 5 * 1024 * 1024) return status.textContent = 'The image must be no larger than 5 MB.';
+  if (!newName || newName.length > 50) return status.textContent = 'Enter a name from 1 to 50 characters.';
+  if (/[\u0000-\u001f\u007f]/.test(newName)) return status.textContent = 'The name contains unsupported characters.';
+  if (file && !accepted.includes(file.type)) return status.textContent = 'Choose a JPG, PNG, or WebP image.';
+  if (file && file.size > 5 * 1024 * 1024) return status.textContent = 'The image must be no larger than 5 MB.';
 
-  const extension = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[file.type];
-  const path = `${state.user.id}/${crypto.randomUUID()}.${extension}`;
+  button.disabled = true;
+  status.textContent = file ? 'Saving your profile...' : 'Saving your name...';
   const oldPath = state.profile?.avatar_path;
-  status.textContent = 'Uploading profile photo...';
-  const { error: uploadError } = await db.storage.from('runmate-avatars').upload(path, file, { contentType: file.type, upsert: false });
-  if (uploadError) {
-    status.textContent = 'Could not upload the photo. Please try again.';
-    console.error('Profile photo upload failed:', uploadError.statusCode || 'unknown');
+  let path = null;
+  if (file) {
+    const extension = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[file.type];
+    path = `${state.user.id}/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await db.storage.from('runmate-avatars').upload(path, file, { contentType: file.type, upsert: false });
+    if (uploadError) {
+      button.disabled = false;
+      status.textContent = 'Could not upload the photo. Please try again.';
+      console.error('Profile photo upload failed:', uploadError.statusCode || 'unknown');
+      return;
+    }
+  }
+
+  const updates = { display_name: newName };
+  if (path) updates.avatar_path = path;
+  const { data: updatedProfile, error: updateError } = await db.from('profiles')
+    .update(updates).eq('id', state.user.id)
+    .select('id,display_name,avatar_path,role,created_at').single();
+  if (updateError) {
+    if (path) await db.storage.from('runmate-avatars').remove([path]);
+    button.disabled = false;
+    status.textContent = 'Could not save your profile. Please try again.';
+    console.error('Profile update failed:', updateError.code || 'unknown');
     return;
   }
 
-  const { data: updatedProfile, error: updateError } = await db.from('profiles').update({ avatar_path: path }).eq('id', state.user.id).select('id,display_name,avatar_path,role,created_at').single();
-  if (updateError) {
-    const { error: cleanupError } = await db.storage.from('runmate-avatars').remove([path]);
-    status.textContent = 'Could not save your profile photo. Please try again.';
-    console.error('Profile photo update failed:', updateError.code || 'unknown', cleanupError ? 'Storage cleanup failed' : '');
-    return;
+  let privateUrl = '';
+  if (path) {
+    privateUrl = await getPrivateAvatarUrl(path);
+    if (!privateUrl) {
+      await db.from('profiles').update({ avatar_path: oldPath || null }).eq('id', state.user.id);
+      await db.storage.from('runmate-avatars').remove([path]);
+      button.disabled = false;
+      status.textContent = 'Name saved, but a secure photo link could not be created. Please try the photo again.';
+      state.profile = { ...updatedProfile, avatar_path: oldPath || null };
+      $('profile-name').textContent = newName;
+      return;
+    }
   }
 
   state.profile = updatedProfile;
-  const privateUrl = await getPrivateAvatarUrl(path);
-  if (!privateUrl) {
-    await db.from('profiles').update({ avatar_path: oldPath || null }).eq('id', state.user.id);
-    return status.textContent = 'Photo uploaded, but a secure viewing link could not be created. Please try again.';
+  $('profile-name').textContent = newName;
+  const initial = Array.from(newName)[0] || 'U';
+  const markup = path
+    ? `<img src="${escapeHtml(privateUrl)}" alt="Photo of ${escapeHtml(newName)}">`
+    : escapeHtml(initial);
+  if (path || !oldPath) {
+    $('user-avatar-initials').innerHTML = markup;
+    $('profile-avatar-large').innerHTML = markup;
+  } else {
+    $('user-avatar-initials').querySelector('img')?.setAttribute('alt', `Photo of ${newName}`);
+    $('profile-avatar-large').querySelector('img')?.setAttribute('alt', `Photo of ${newName}`);
   }
-  const name = state.profile.display_name || 'Stride user';
-  const markup = `<img src="${escapeHtml(privateUrl)}" alt="Photo of ${escapeHtml(name)}">`;
-  $('user-avatar-initials').innerHTML = markup;
-  $('profile-avatar-large').innerHTML = markup;
-  if (oldPath) {
+
+  if (path && oldPath) {
     const { error: removeError } = await db.storage.from('runmate-avatars').remove([oldPath]);
     if (removeError) console.error('Old profile photo cleanup failed:', removeError.statusCode || 'unknown');
   }
-  event.target.reset();
-  status.textContent = 'Profile photo updated.';
+  $('profile-photo-file').value = '';
+  button.disabled = false;
+  status.textContent = path ? 'Profile name and photo updated.' : 'Profile name updated.';
 });
 
 $('profile-logout-btn').addEventListener('click', async event => {
@@ -769,7 +805,7 @@ async function loadAdminPanel() {
   usersBox.innerHTML = '<p class="empty-state">Loading...</p>';
   const [clipsResult, usersResult] = await Promise.all([
     db.from('clips').select('id,storage_path,caption,media_type,status,created_at').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
-    db.from('profiles').select('id,display_name,role,created_at').order('created_at', { ascending: false }).limit(100)
+    db.from('profiles').select('id,display_name,role,created_at,is_banned').order('created_at', { ascending: false }).limit(100)
   ]);
   if (clipsResult.error) {
     pendingBox.innerHTML = '<p class="empty-state">Could not load the review queue.</p>';
@@ -786,11 +822,33 @@ async function loadAdminPanel() {
     console.error('Admin users query failed:', usersResult.error.code || 'unknown');
   } else {
     const users = usersResult.data || [];
-    usersBox.innerHTML = users.length ? `<table><thead><tr><th>Name</th><th>Role</th><th>Created</th>${isOwner() ? '<th>Manage Role</th>' : ''}</tr></thead><tbody>${users.map(user => `<tr><td>${escapeHtml(user.display_name || 'Member')}</td><td>${user.role === 'owner' ? 'Owner' : user.role === 'admin' ? 'Admin' : 'Member'}</td><td>${escapeHtml(formatDate(user.created_at))}</td>${isOwner() ? `<td><select data-role-choice="${escapeHtml(user.id)}" aria-label="Role for ${escapeHtml(user.display_name || 'Member')}"><option value="member" ${user.role === 'member' ? 'selected' : ''}>Member</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Owner</option></select><button class="secondary-btn role-save-btn" type="button" data-save-role="${escapeHtml(user.id)}">Save Role</button></td>` : ''}</tr>`).join('')}</tbody></table>` : '<p class="empty-state">No users found.</p>';
+    usersBox.innerHTML = users.length ? `<table><thead><tr><th>Name</th><th>Role</th><th>Access</th><th>Created</th>${isOwner() ? '<th>Manage Account</th>' : ''}</tr></thead><tbody>${users.map(user => `<tr><td>${escapeHtml(user.display_name || 'Member')}</td><td>${user.role === 'owner' ? 'Owner' : user.role === 'admin' ? 'Admin' : 'Member'}</td><td>${user.is_banned ? 'Blocked' : 'Active'}</td><td>${escapeHtml(formatDate(user.created_at))}</td>${isOwner() ? (user.role === 'owner' || user.id === state.user.id ? '<td>Protected owner</td>' : `<td class="admin-user-actions"><select data-role-choice="${escapeHtml(user.id)}" aria-label="Role for ${escapeHtml(user.display_name || 'Member')}"><option value="member" ${user.role === 'member' ? 'selected' : ''}>Member</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Owner</option></select><button class="secondary-btn role-save-btn" type="button" data-save-role="${escapeHtml(user.id)}">Save Role</button><button class="danger-btn account-access-btn" type="button" data-set-block="${escapeHtml(user.id)}" data-blocked="${user.is_banned ? 'false' : 'true'}">${user.is_banned ? 'Restore Access' : 'Block Access'}</button></td>`) : ''}</tr>`).join('')}</tbody></table>` : '<p class="empty-state">No users found.</p>';
   }
 }
 
 document.addEventListener('click', async event => {
+  const accessButton = event.target.closest('[data-set-block]');
+  if (accessButton) {
+    if (!isOwner()) return toast('Only the owner can block accounts.');
+    const shouldBlock = accessButton.dataset.blocked === 'true';
+    const confirmed = window.confirm(shouldBlock
+      ? 'Block this account from signing in and using Stride?'
+      : 'Restore this account’s access to Stride?');
+    if (!confirmed) return;
+    accessButton.disabled = true;
+    const { data, error } = await db.functions.invoke('manage-account-access', {
+      body: { user_id: accessButton.dataset.setBlock, blocked: shouldBlock }
+    });
+    if (error || data?.error) {
+      accessButton.disabled = false;
+      console.error('Account access update failed:', error?.message || data?.error || 'unknown');
+      toast('Could not update account access. Check that the access function is deployed.');
+      return;
+    }
+    toast(shouldBlock ? 'Account blocked.' : 'Account access restored.');
+    await loadAdminPanel();
+    return;
+  }
   const roleButton = event.target.closest('[data-save-role]');
   if (roleButton) {
     if (!isOwner()) return toast('Only the owner can manage roles.');
