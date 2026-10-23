@@ -970,7 +970,7 @@ async function loadAdminPanel() {
   usersBox.innerHTML = '<p class="empty-state">Loading...</p>';
   const [clipsResult, usersResult, ownerDetailsResult] = await Promise.all([
     db.from('clips').select('id,storage_path,caption,media_type,status,created_at').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
-    db.from('profiles').select('id,display_name,role,created_at,is_banned').order('created_at', { ascending: false }).limit(100),
+    db.rpc('list_admin_users'),
     isOwner() ? db.rpc('list_owner_users') : Promise.resolve({ data: [], error: null })
   ]);
   if (clipsResult.error) {
@@ -984,7 +984,7 @@ async function loadAdminPanel() {
     pendingBox.innerHTML = reviewClips.length ? reviewClips.map(clip => clipCard(clip, true)).join('') : '<p class="empty-state">No clips pending review.</p>';
   }
   if (usersResult.error) {
-    usersBox.innerHTML = '<p class="empty-state">Could not load users. Please refresh and try again.</p>';
+    usersBox.innerHTML = '<p class="empty-state">Could not load users. Apply the admin-users-migration.sql in Supabase, then refresh.</p>';
     console.error('Admin users query failed:', usersResult.error.code || 'unknown');
   } else {
     if (isOwner() && ownerDetailsResult.error) console.error('Owner contact details unavailable; apply owner-phone-migration.sql:', ownerDetailsResult.error.code || 'unknown');
