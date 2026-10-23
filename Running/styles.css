@@ -221,4 +221,5 @@ button.avatar { padding: 0; cursor: pointer; }
 .admin-member-cell { display: inline-flex; align-items: center; gap: 9px; min-width: 180px; }
 .admin-member-cell img { width: 34px; height: 34px; flex: 0 0 34px; border: 1px solid #888; border-radius: 50%; object-fit: cover; }
 .admin-member-cell .participant-avatar-fallback { width: 34px; height: 34px; flex-basis: 34px; }
+.admin-users td small { display: block; margin-top: 3px; color: var(--text-muted); font-size: 12px; }
 #profile-edit-name, #profile-edit-birth-date, #profile-edit-phone { width: 100%; min-width: 0; padding: 12px 14px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 9px; color: var(--text-main); font-size: 15px; }
