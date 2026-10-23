@@ -1,3 +1,8 @@
+document.addEventListener('click', event => {
+  if (!event.target.closest('[data-scroll-runs]')) return;
+  document.getElementById('upcoming-runs-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
 /* ONE MORE STEP. + Supabase Client Config */
 const SUPABASE_URL = 'https://trqrpoployvsuuitffji.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_H54WIGq4spz51QFkSjmR8w_ohdXdv90';
