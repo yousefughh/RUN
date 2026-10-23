@@ -8,7 +8,7 @@ const chatAvatarUrls = new Map();
 let activeChatChannel = null;
 let chatRefreshJob = null;
 
-const state = { user: null, profile: null, events: [], bookings: [], activeChatRun: null, activeChatView: 'messages', activeChatParticipantOnly: false, participantsRunId: null, authListener: false, loadingSessionUserId: null, clips: [], passwordRecovery: new URLSearchParams(location.hash.slice(1)).get('type') === 'recovery' };
+const state = { user: null, profile: null, requiresProfileUpdate: false, events: [], bookings: [], activeChatRun: null, activeChatView: 'messages', activeChatParticipantOnly: false, participantsRunId: null, authListener: false, loadingSessionUserId: null, clips: [], passwordRecovery: new URLSearchParams(location.hash.slice(1)).get('type') === 'recovery' };
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const isAdmin = () => ['admin', 'owner'].includes(state.profile?.role);
@@ -303,6 +303,7 @@ async function loadSession(session) {
   const { data: details, error: detailsError } = await db.rpc('get_my_profile_details');
   if (detailsError) console.warn('Private profile details are unavailable until the profile migration is applied.');
   state.profile = { ...profile, ...(Array.isArray(details) ? details[0] : details || {}) };
+  state.requiresProfileUpdate = !state.profile.birth_date;
 
   const name = profile.display_name || 'Runwise Egypt user';
   const email = state.user.email || '';
@@ -318,6 +319,9 @@ async function loadSession(session) {
   $('profile-edit-name').value = state.profile.display_name || '';
   $('profile-edit-birth-date').value = state.profile.birth_date || '';
   $('profile-edit-phone').value = state.profile.phone || '';
+  $('profile-details-status').textContent = state.requiresProfileUpdate
+    ? 'Please confirm your name and add your date of birth to continue. Phone number is optional.'
+    : '';
 
   document.querySelectorAll('.admin-only').forEach(el => el.hidden = !isAdmin());
 
@@ -435,6 +439,10 @@ document.addEventListener('click', async event => {
 });
 
 function navigateTo(pageId) {
+  if (state.requiresProfileUpdate && pageId !== 'profile') {
+    pageId = 'profile';
+    toast('Complete your profile details to continue.');
+  }
   if ((pageId === 'organizer' || pageId === 'admin') && !isAdmin()) {
     toast('Only admins can create runs');
     return;
@@ -923,6 +931,7 @@ $('profile-details-form').addEventListener('submit', async event => {
   button.disabled = false;
   if (error) { status.textContent = 'Could not save your details. Apply the profile migration, then try again.'; console.error('Profile details update failed:', error.code || 'unknown'); return; }
   state.profile = { ...state.profile, display_name: name, birth_date: birthDate, phone: phone || null };
+  state.requiresProfileUpdate = false;
   $('profile-name').textContent = name;
   $('user-avatar-initials').querySelector('img')?.setAttribute('alt', `Photo of ${name}`);
   $('profile-avatar-large').querySelector('img')?.setAttribute('alt', `Photo of ${name}`);
