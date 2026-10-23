@@ -7,10 +7,12 @@ create table if not exists public.profiles (
   id uuid references auth.users on delete cascade primary key,
   display_name text,
   phone text,
+  birth_date date,
   avatar_path text,
   role text not null default 'member' check (role in ('member', 'admin', 'owner')),
   created_at timestamptz not null default now()
 );
+alter table public.profiles add column if not exists birth_date date;
 
 create table if not exists public.runs (
   id uuid primary key default gen_random_uuid(),
@@ -139,11 +141,12 @@ security definer
 set search_path = ''
 as $$
 begin
-  insert into public.profiles (id, display_name, phone, role)
+  insert into public.profiles (id, display_name, phone, birth_date, role)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data ->> 'display_name', split_part(coalesce(new.email, ''), '@', 1), 'مستخدم RUNMATE'),
-    coalesce(new.raw_user_meta_data ->> 'phone', ''),
+    coalesce(new.raw_user_meta_data ->> 'display_name', split_part(coalesce(new.email, ''), '@', 1), 'Runwise Egypt member'),
+    nullif(new.raw_user_meta_data ->> 'phone', ''),
+    nullif(new.raw_user_meta_data ->> 'birth_date', '')::date,
     'member'
   )
   on conflict (id) do nothing;
@@ -222,7 +225,7 @@ alter table public.bookings enable row level security;
 alter table public.messages enable row level security;
 
 -- Drop policies from earlier versions before recreating them.
-do $realtime$$
+do $$
 declare policy_record record;
 begin
   for policy_record in
@@ -263,7 +266,7 @@ with check (auth.uid() = id);
 revoke select, update on table public.profiles from public, anon, authenticated;
 grant select (id, display_name, avatar_path, role, created_at) on table public.profiles to authenticated;
 grant select (id, role) on table public.profiles to anon;
-grant update (display_name, avatar_path) on table public.profiles to authenticated;
+grant update (display_name, avatar_path, phone, birth_date) on table public.profiles to authenticated;
 
 create policy "Runs are viewable by everyone"
 on public.runs for select using (true);
@@ -335,21 +338,20 @@ revoke insert, update, delete on table public.messages from public, anon, authen
 grant insert (run_id, user_id, body) on table public.messages to authenticated;
 
 -- Enable live chat updates for the browser's filtered INSERT subscription.
-do '
+do $$
 begin
-  if exists (select 1 from pg_publication where pubname = ''supabase_realtime'')
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
      and not exists (
        select 1 from pg_publication_tables
-       where pubname = ''supabase_realtime''
-         and schemaname = ''public''
-         and tablename = ''messages''
+       where pubname = 'supabase_realtime'
+         and schemaname = 'public'
+         and tablename = 'messages'
      ) then
-    execute ''alter publication supabase_realtime add table public.messages'';
-  elsif not exists (select 1 from pg_publication where pubname = ''supabase_realtime'') then
-    raise notice ''supabase_realtime publication is missing; enable Realtime for public.messages in Supabase.'';
+    execute 'alter publication supabase_realtime add table public.messages';
+  elsif not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    raise notice 'supabase_realtime publication is missing; enable Realtime for public.messages in Supabase.';
   end if;
-end;
-';
+end $$;
 -- RUNMATE compatibility and Clips migration. Safe to re-run; preserves users and existing profiles.
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone text;
 DO $$
@@ -370,11 +372,12 @@ ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_check CHECK (role IN ('
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 BEGIN
-  INSERT INTO public.profiles (id, display_name, phone, role)
+  INSERT INTO public.profiles (id, display_name, phone, birth_date, role)
   VALUES (
     NEW.id,
-    COALESCE(NEW.raw_user_meta_data ->> 'display_name', NULLIF(split_part(COALESCE(NEW.email, ''), '@', 1), ''), 'RUNMATE member'),
+    COALESCE(NEW.raw_user_meta_data ->> 'display_name', NULLIF(split_part(COALESCE(NEW.email, ''), '@', 1), ''), 'Runwise Egypt member'),
     NULLIF(NEW.raw_user_meta_data ->> 'phone', ''),
+    NULLIF(NEW.raw_user_meta_data ->> 'birth_date', '')::date,
     'member'
   ) ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
@@ -383,9 +386,9 @@ $$;
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users
 FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-INSERT INTO public.profiles (id, display_name, phone, role)
+INSERT INTO public.profiles (id, display_name, phone, birth_date, role)
 SELECT u.id, COALESCE(u.raw_user_meta_data ->> 'display_name', NULLIF(split_part(COALESCE(u.email, ''), '@', 1), '')),
-       NULLIF(u.raw_user_meta_data ->> 'phone', ''), 'member'
+       NULLIF(u.raw_user_meta_data ->> 'phone', ''), NULLIF(u.raw_user_meta_data ->> 'birth_date', '')::date, 'member'
 FROM auth.users u LEFT JOIN public.profiles p ON p.id = u.id WHERE p.id IS NULL;
 DROP POLICY IF EXISTS "Users can insert their own regular profile" ON public.profiles;
 DROP POLICY IF EXISTS "Users can insert/update their profile." ON public.profiles;
@@ -494,7 +497,7 @@ BEGIN
 
   RETURN QUERY
   SELECT m.id, m.body, m.created_at,
-         COALESCE(NULLIF(p.display_name, ''), 'عضو في Stride'), p.avatar_path
+         COALESCE(NULLIF(p.display_name, ''), 'Runwise Egypt member'), p.avatar_path
   FROM public.messages m
   LEFT JOIN public.profiles p ON p.id = m.user_id
   WHERE m.run_id = p_run_id
@@ -504,6 +507,56 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.get_run_chat_messages(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_run_chat_messages(uuid) TO authenticated;
+
+-- Private profile details are returned only to the signed-in account owner.
+CREATE OR REPLACE FUNCTION public.get_my_profile_details()
+RETURNS TABLE (birth_date date, phone text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+  SELECT p.birth_date, p.phone FROM public.profiles p WHERE p.id = auth.uid();
+$$;
+REVOKE ALL ON FUNCTION public.get_my_profile_details() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_my_profile_details() TO authenticated;
+
+-- A runner can list names and photos only for a run they joined; emails are excluded.
+CREATE OR REPLACE FUNCTION public.get_run_participants(p_run_id uuid)
+RETURNS TABLE (display_name text, avatar_path text)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF auth.uid() IS NULL OR NOT (
+    EXISTS (SELECT 1 FROM public.bookings b WHERE b.run_id = p_run_id AND b.user_id = auth.uid())
+    OR public.is_admin_or_owner()
+  ) THEN
+    RAISE EXCEPTION 'chat_access_denied';
+  END IF;
+  RETURN QUERY
+  SELECT COALESCE(NULLIF(p.display_name, ''), 'Runwise Egypt member'), p.avatar_path
+  FROM public.bookings b
+  JOIN public.profiles p ON p.id = b.user_id
+  WHERE b.run_id = p_run_id
+  ORDER BY lower(COALESCE(p.display_name, ''));
+END;
+$$;
+REVOKE ALL ON FUNCTION public.get_run_participants(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_run_participants(uuid) TO authenticated;
+
+-- Only the owner can retrieve other accounts' email addresses for the admin page.
+CREATE OR REPLACE FUNCTION public.list_owner_users()
+RETURNS TABLE (id uuid, email text, display_name text, avatar_path text, role text, created_at timestamptz)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF auth.uid() IS NULL OR NOT EXISTS (
+    SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'owner'
+  ) THEN
+    RAISE EXCEPTION 'owner_access_required';
+  END IF;
+  RETURN QUERY
+  SELECT p.id, u.email::text, p.display_name, p.avatar_path, p.role, p.created_at
+  FROM public.profiles p JOIN auth.users u ON u.id = p.id
+  ORDER BY p.created_at DESC LIMIT 500;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.list_owner_users() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.list_owner_users() TO authenticated;
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('runmate-run-images', 'runmate-run-images', true, 5242880, ARRAY['image/jpeg','image/png','image/webp'])
@@ -533,7 +586,6 @@ CREATE POLICY "Users upload their own profile photos" ON storage.objects FOR INS
 WITH CHECK (bucket_id = 'runmate-avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
 CREATE POLICY "Users delete their own profile photos" ON storage.objects FOR DELETE TO authenticated
 USING (bucket_id = 'runmate-avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
-
 
 
 

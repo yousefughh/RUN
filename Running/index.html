@@ -4,11 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#080808">
-  <title>Stride — Running Community</title>
+  <link rel="icon" type="image/svg+xml" href="runwise-egypt-logo.svg">
+  <title>Runwise Egypt — Running Community</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20">
+  <link rel="stylesheet" href="styles.css?v=21">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -16,7 +17,7 @@
   <!-- Sign-in and email confirmation -->
   <div class="auth-container" id="auth-screen">
     <div class="auth-box">
-      <div class="auth-brand">Stride</div>
+      <div class="auth-brand">Runwise Egypt</div>
       <p class="auth-note">Sign in or create a new account</p>
       
       <div class="auth-tabs">
@@ -40,6 +41,12 @@
       <form class="auth-form" id="form-register" style="display:none">
         <label>Full name
           <input type="text" id="reg-name" required placeholder="Your name">
+        </label>
+        <label>Date of birth
+          <input type="date" id="reg-birth-date" required autocomplete="bday">
+        </label>
+        <label>Phone number (optional)
+          <input type="tel" id="reg-phone" autocomplete="tel" placeholder="Your phone number">
         </label>
         <label>Email address
           <input type="email" id="reg-identity" required placeholder="name@example.com">
@@ -68,12 +75,13 @@
   <!-- Main site interface -->
   <div id="app-shell">
     <header class="top-nav">
-      <div class="brand">Stride</div>
+      <div class="brand">Runwise Egypt</div>
       <nav class="nav-links" id="main-nav">
         <button data-page="home" class="active">Home</button>
         <button data-page="clips">Clips</button>
         <button data-page="tickets">My Runs</button>
         <button data-page="chats">Chats</button>
+        <button data-page="profile" class="profile-nav-btn"><svg class="nav-profile-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg><span>Profile</span></button>
         <button data-page="admin" class="admin-only" hidden>Admin</button>
         <button data-page="organizer" class="admin-only" hidden>Manage Runs</button>
       </nav>
@@ -83,7 +91,7 @@
     </header>
 
     <main class="main-content">
-      <div class="breadcrumb">Stride / <span id="crumb-active">Home</span></div>
+      <div class="breadcrumb">Runwise Egypt / <span id="crumb-active">Home</span></div>
 
       <!-- Home page -->
       <section class="page active" id="page-home">
@@ -117,7 +125,7 @@
         <div class="chat-container">
           <aside class="chat-sidebar" id="chat-runs"></aside>
           <div class="chat-panel" id="chat-panel">
-            <p class="empty-state">Choose a run to chat with its participants.</p>
+            <p class="empty-state">Choose a run to open its chat.</p>
           </div>
         </div>
       </section>
@@ -180,14 +188,23 @@
           <div class="avatar-large" id="profile-avatar-large">U</div>
           <h3 id="profile-name">User</h3>
           <p id="profile-email" class="muted-text">email@example.com</p>
-          <span class="role-badge" id="profile-role">Stride Member</span>
+          <span class="role-badge" id="profile-role">Runwise Egypt Member</span>
           <form id="profile-photo-form" class="profile-photo-form">
-            <label for="profile-display-name">Name</label>
-            <input id="profile-display-name" type="text" maxlength="50" autocomplete="name" required placeholder="Your name">
             <label for="profile-photo-file">Profile photo (JPG, PNG or WebP, up to 5 MB)</label>
             <input id="profile-photo-file" type="file" accept="image/jpeg,image/png,image/webp">
-            <button class="primary-btn" type="submit">Save Profile</button>
+            <button class="primary-btn" type="submit">Upload Profile Photo</button>
             <p id="profile-photo-status" class="muted-text" aria-live="polite"></p>
+          </form>
+          <form id="profile-details-form" class="profile-photo-form">
+            <h3>Profile details</h3>
+            <label for="profile-edit-name">Full name</label>
+            <input id="profile-edit-name" type="text" maxlength="80" required autocomplete="name">
+            <label for="profile-edit-birth-date">Date of birth</label>
+            <input id="profile-edit-birth-date" type="date" required autocomplete="bday">
+            <label for="profile-edit-phone">Phone number (optional)</label>
+            <input id="profile-edit-phone" type="tel" maxlength="32" autocomplete="tel" placeholder="Your phone number">
+            <button class="primary-btn" type="submit">Save Profile Details</button>
+            <p id="profile-details-status" class="muted-text" aria-live="polite"></p>
           </form>
           <button class="danger-btn profile-logout-btn" id="profile-logout-btn" type="button">Sign Out</button>
           <form id="profile-password-form" class="profile-photo-form profile-password-form">
@@ -215,6 +232,6 @@
     <div class="toast" id="toast"></div>
   </div>
 
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-/* Stride + Supabase Client Config */
+/* Runwise Egypt + Supabase Client Config */
 const SUPABASE_URL = 'https://trqrpoployvsuuitffji.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_H54WIGq4spz51QFkSjmR8w_ohdXdv90';
 const AUTH_REDIRECT_URL = 'https://yousefughh.github.io/RUN/';
@@ -40,7 +40,7 @@ async function renderChatMessages(messages, runId) {
   const pathIndexes = new Map(paths.map((path, index) => [path, index]));
   box.innerHTML = messages?.length
     ? [...messages].reverse().map(message => {
-      const name = message.sender_name || 'Stride member';
+      const name = message.sender_name || 'Runwise Egypt member';
       const initial = Array.from(name.trim())[0] || 'U';
       const avatarIndex = pathIndexes.get(message.avatar_path);
       const avatar = avatarIndex === undefined
@@ -181,8 +181,11 @@ $('form-register').addEventListener('submit', async e => {
   if (form.dataset.submitting === 'true') return;
 
   const name = $('reg-name').value.trim();
+  const birthDate = $('reg-birth-date').value;
+  const phone = $('reg-phone').value.trim();
   const email = $('reg-identity').value.trim();
   const password = $('reg-pass').value;
+  if (birthDate > new Date().toISOString().slice(0, 10)) return showMessage('Date of birth cannot be in the future.');
   const button = form.querySelector('button[type="submit"]');
 
   form.dataset.submitting = 'true';
@@ -194,7 +197,7 @@ $('form-register').addEventListener('submit', async e => {
       email,
       password,
       options: {
-        data: { display_name: name },
+        data: { display_name: name, birth_date: birthDate, phone: phone || null },
         emailRedirectTo: AUTH_REDIRECT_URL
       }
     });
@@ -297,7 +300,11 @@ async function loadSession(session) {
   state.profile = profile;
   $('auth-screen').style.display = 'none';$('app-shell').classList.add('authenticated');
 
-  const name = profile.display_name || 'Stride user';
+  const { data: details, error: detailsError } = await db.rpc('get_my_profile_details');
+  if (detailsError) console.warn('Private profile details are unavailable until the profile migration is applied.');
+  state.profile = { ...profile, ...(Array.isArray(details) ? details[0] : details || {}) };
+
+  const name = profile.display_name || 'Runwise Egypt user';
   const email = state.user.email || '';
   const initial = Array.from(name)[0] || 'U';
 
@@ -306,9 +313,11 @@ async function loadSession(session) {
   $('user-avatar-initials').innerHTML = avatarMarkup;
   $('profile-avatar-large').innerHTML = avatarMarkup;
   $('profile-name').textContent = name;
-  $('profile-display-name').value = name;
   $('profile-email').textContent = email;
-  $('profile-role').textContent = state.profile.role === 'owner' ? 'Stride Owner' : isAdmin() ? 'Admin' : 'Stride Member';
+  $('profile-role').textContent = state.profile.role === 'owner' ? 'Runwise Egypt Owner' : isAdmin() ? 'Admin' : 'Runwise Egypt Member';
+  $('profile-edit-name').value = state.profile.display_name || '';
+  $('profile-edit-birth-date').value = state.profile.birth_date || '';
+  $('profile-edit-phone').value = state.profile.phone || '';
 
   document.querySelectorAll('.admin-only').forEach(el => el.hidden = !isAdmin());
 
@@ -357,7 +366,7 @@ async function loadParticipants(runId) {
   }
   const participants = result.data || [];
   const cards = await Promise.all(participants.map(async participant => {
-    const name = participant.display_name || 'Stride member';
+    const name = participant.display_name || 'Runwise Egypt member';
     const avatarUrl = participant.avatar_path ? await getChatAvatarUrl(participant.avatar_path) : '';
     const avatar = avatarUrl
       ? `<img class="participant-avatar" src="${escapeHtml(avatarUrl)}" alt="Photo of ${escapeHtml(name)}">`
@@ -365,7 +374,7 @@ async function loadParticipants(runId) {
     const action = isAdmin() && participant.participant_id
       ? `<button class="danger-btn participant-remove-btn" type="button" data-remove-run-user="${escapeHtml(participant.participant_id)}" data-run-id="${escapeHtml(runId)}">Remove &amp; Block from Chat</button>`
       : '';
-    return `<article class="participant-card">${avatar}<div><b>${escapeHtml(name)}</b><p class="muted-text">${escapeHtml(run?.title || 'Stride run')}</p></div>${action}</article>`;
+    return `<article class="participant-card">${avatar}<div><b>${escapeHtml(name)}</b><p class="muted-text">${escapeHtml(run?.title || 'Runwise Egypt run')}</p></div>${action}</article>`;
   }));
   box.innerHTML = cards.length ? cards.join('') : '<p class="empty-state">No one has booked this run yet.</p>';
 
@@ -382,7 +391,7 @@ async function loadParticipants(runId) {
   }
   const blocked = blockedResult.data || [];
   blockedBox.innerHTML = blocked.length ? blocked.map(person =>
-    `<article class="participant-card participant-card-blocked"><div class="participant-avatar participant-avatar-fallback">${escapeHtml(Array.from((person.display_name || 'U').trim())[0] || 'U')}</div><div><b>${escapeHtml(person.display_name || 'Stride member')}</b><p class="muted-text">Blocked from ${escapeHtml(run?.title || 'this run')}</p></div><button class="secondary-btn participant-restore-btn" type="button" data-restore-run-user="${escapeHtml(person.participant_id)}" data-run-id="${escapeHtml(runId)}">Restore Chat Access</button></article>`
+    `<article class="participant-card participant-card-blocked"><div class="participant-avatar participant-avatar-fallback">${escapeHtml(Array.from((person.display_name || 'U').trim())[0] || 'U')}</div><div><b>${escapeHtml(person.display_name || 'Runwise Egypt member')}</b><p class="muted-text">Blocked from ${escapeHtml(run?.title || 'this run')}</p></div><button class="secondary-btn participant-restore-btn" type="button" data-restore-run-user="${escapeHtml(person.participant_id)}" data-run-id="${escapeHtml(runId)}">Restore Chat Access</button></article>`
   ).join('') : '<p class="empty-state">No one is blocked from this run chat.</p>';
 }
 
@@ -435,7 +444,7 @@ function navigateTo(pageId) {
   document.querySelectorAll('[data-page]').forEach(item => item.classList.toggle('active', item.dataset.page === pageId));
   
   const names = { clips: 'Clips', admin: 'Admin', home: 'Home', tickets: 'My Runs', chats: 'Chats', profile: 'Profile', organizer: 'Manage Runs' };
-  $('crumb-active').textContent = names[pageId] || 'Stride';
+  $('crumb-active').textContent = names[pageId] || 'Runwise Egypt';
 
   if (pageId === 'chats') renderChatsList();
   if (pageId === 'clips') loadClips();
@@ -449,8 +458,6 @@ document.addEventListener('click', e => {
     navigateTo(pageBtn.dataset.page);
   }
   if (e.target.closest('#user-avatar-initials')) navigateTo('profile');
-  const participantsBtn = e.target.closest('[data-participants-run]');
-  if (participantsBtn) openParticipants(participantsBtn.dataset.participantsRun);
   const openBtn = e.target.closest('[data-event]');
   if (openBtn) openModal(openBtn.dataset.event);
   const chatBtn = e.target.closest('[data-chat-run]');
@@ -468,9 +475,9 @@ function createRunCard(run) {
   const seatText = seats === 0 ? 'Sold out' : `${seats} spots available`;
   return `<article class="run-card">
     <div class="run-image"><img loading="lazy" decoding="async" src="${escapeHtml(run.image_url || 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=600&auto=format&fit=crop&q=80')}" alt=""><span class="run-badge ${seats === 0 ? 'sold-out' : ''}">${seatText}</span></div>
-    <div class="run-info"><div class="run-org">✦ Organized by Stride</div>
+    <div class="run-info"><div class="run-org">✦ Organized by Runwise Egypt</div>
     <h3>${escapeHtml(run.title)}</h3><div class="run-detail"><span>◷ ${escapeHtml(formatDate(run.starts_at))}</span><span>⌖ ${escapeHtml(run.location)} · ${escapeHtml(run.distance_km)} km</span></div>
-    <div class="run-foot"><div class="run-price">${escapeHtml(run.price || 'Free')}</div><button class="run-open" data-participants-run="${escapeHtml(run.id)}">Participants</button><button class="run-open" data-event="${escapeHtml(run.id)}">Details</button></div></div></article>`;
+    <div class="run-foot"><div class="run-price">${escapeHtml(run.price || 'Free')}</div><button class="run-open" data-event="${escapeHtml(run.id)}">Details</button></div></div></article>`;
 }
 
 function renderEvents() {
@@ -519,13 +526,12 @@ function openModal(id) {
   $('modal-content').innerHTML = `
     <div class="modal-body">
       <h2>${escapeHtml(run.title)}</h2>
-      <p class="muted-text">Run organizer: Stride</p>
+      <p class="muted-text">Run organizer: Runwise Egypt</p>
       <p>◷ Date: ${escapeHtml(formatDate(run.starts_at))}</p>
       <p>⌖ Meeting point: ${escapeHtml(run.location)}</p>
       <p>Distance: ${escapeHtml(run.distance_km)} km</p>
       <p>${ticketText}</p>
       <p>Price: ${escapeHtml(run.price || 'Free')}</p>
-      <button class="secondary-btn" id="run-participants-btn" type="button">View Participants</button>
       <button class="primary-btn" id="book-now-btn" ${!booked && (remaining < 1 || bookingClosed) ? 'disabled' : ''}>${booked ? 'Cancel Booking' : remaining < 1 ? 'Sold out' : bookingClosed ? 'Booking closed' : 'Book a Spot'}</button>
       ${isAdmin() ? `<label class="run-status-control">Run status
         <select id="run-status-choice">
@@ -538,7 +544,6 @@ function openModal(id) {
         <button class="danger-btn" id="delete-run-btn" type="button">Permanently Delete Run</button>` : ''}
     </div>`;
 
-  $('run-participants-btn').onclick = () => { $('modal').classList.remove('active'); openParticipants(run.id); };
   $('book-now-btn').onclick = () => toggleBooking(run, booked);
   if (isAdmin()) {
     $('save-run-settings').onclick = () => saveRunSettings(run);
@@ -685,7 +690,7 @@ async function renderChatsList() {
 
   const runs = (data || []).map(row => row.runs).filter(Boolean);
   $('chat-runs').innerHTML = runs.length
-    ? runs.map(run => `<div class="chat-run-item"><button class="chat-run-btn ${state.activeChatRun === run.id ? 'active' : ''}" type="button" data-chat-run="${escapeHtml(run.id)}"><b>${escapeHtml(run.title)}</b><small>${run.admin_only_chat ? 'Admins only' : 'Participant chat'}</small></button><button class="chat-participants-btn" type="button" data-participants-run="${escapeHtml(run.id)}">View participants</button></div>`).join('')
+    ? runs.map(run => `<div class="chat-run-item"><button class="chat-run-btn ${state.activeChatRun === run.id ? 'active' : ''}" type="button" data-chat-run="${escapeHtml(run.id)}"><b>${escapeHtml(run.title)}</b><small>${run.admin_only_chat ? 'Admins only' : 'Participant chat'}</small></button></div>`).join('')
     : '<p class="empty-state">Book a run to see its chat here.</p>';
 }
 
@@ -790,7 +795,7 @@ async function loadClips() {
 function clipCard(clip, reviewMode) {
   const media = clip.signedUrl ? (clip.media_type === 'video'
     ? `<video src="${escapeHtml(clip.signedUrl)}" controls preload="metadata" playsinline></video>`
-    : `<img src="${escapeHtml(clip.signedUrl)}" alt="Clip from the Stride community" loading="lazy">`) : '<div class="empty-state">Could not load file</div>';
+    : `<img src="${escapeHtml(clip.signedUrl)}" alt="Clip from the Runwise Egypt community" loading="lazy">`) : '<div class="empty-state">Could not load file</div>';
   const status = `<span class="clip-status ${escapeHtml(clip.status)}">${clip.status === 'pending' ? 'Pending review' : clip.status === 'approved' ? 'Approved' : 'Rejected'}</span>`;
   const actions = reviewMode && clip.status === 'pending' ? `<div class="clip-actions"><button class="primary-btn" data-review-clip="${escapeHtml(clip.id)}" data-status="approved">Approve</button><button class="secondary-btn" data-review-clip="${escapeHtml(clip.id)}" data-status="rejected">Reject</button></div>` : '';
   return `<article class="clip-card">${media}<div class="clip-card-body">${status}<p>${escapeHtml(clip.caption || '')}</p><small>${escapeHtml(formatDate(clip.created_at))}</small>${actions}</div></article>`;
@@ -829,18 +834,16 @@ $('profile-photo-form').addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.currentTarget;
   const button = form.querySelector('button[type="submit"]');
-  const nameInput = $('profile-display-name');
-  const newName = nameInput.value.trim();
+  const newName = state.profile?.display_name || 'Runwise Egypt member';
   const file = $('profile-photo-file').files?.[0];
   const status = $('profile-photo-status');
   const accepted = ['image/jpeg', 'image/png', 'image/webp'];
-  if (!newName || newName.length > 50) return status.textContent = 'Enter a name from 1 to 50 characters.';
-  if (/[\u0000-\u001f\u007f]/.test(newName)) return status.textContent = 'The name contains unsupported characters.';
+  if (!file) return status.textContent = 'Choose a photo to upload.';
   if (file && !accepted.includes(file.type)) return status.textContent = 'Choose a JPG, PNG, or WebP image.';
   if (file && file.size > 5 * 1024 * 1024) return status.textContent = 'The image must be no larger than 5 MB.';
 
   button.disabled = true;
-  status.textContent = file ? 'Saving your profile...' : 'Saving your name...';
+  status.textContent = 'Uploading your profile photo...';
   const oldPath = state.profile?.avatar_path;
   let path = null;
   if (file) {
@@ -855,8 +858,7 @@ $('profile-photo-form').addEventListener('submit', async event => {
     }
   }
 
-  const updates = { display_name: newName };
-  if (path) updates.avatar_path = path;
+  const updates = { avatar_path: path };
   const { data: updatedProfile, error: updateError } = await db.from('profiles')
     .update(updates).eq('id', state.user.id)
     .select('id,display_name,avatar_path,role,created_at').single();
@@ -875,14 +877,14 @@ $('profile-photo-form').addEventListener('submit', async event => {
       await db.from('profiles').update({ avatar_path: oldPath || null }).eq('id', state.user.id);
       await db.storage.from('runmate-avatars').remove([path]);
       button.disabled = false;
-      status.textContent = 'Name saved, but a secure photo link could not be created. Please try the photo again.';
-      state.profile = { ...updatedProfile, avatar_path: oldPath || null };
+      status.textContent = 'The photo could not be shown securely. Please try again.';
+      state.profile = { ...state.profile, ...updatedProfile, avatar_path: oldPath || null };
       $('profile-name').textContent = newName;
       return;
     }
   }
 
-  state.profile = updatedProfile;
+  state.profile = { ...state.profile, ...updatedProfile };
   $('profile-name').textContent = newName;
   const initial = Array.from(newName)[0] || 'U';
   const markup = path
@@ -902,7 +904,31 @@ $('profile-photo-form').addEventListener('submit', async event => {
   }
   $('profile-photo-file').value = '';
   button.disabled = false;
-  status.textContent = path ? 'Profile name and photo updated.' : 'Profile name updated.';
+  status.textContent = 'Profile photo updated.';
+});
+
+$('profile-details-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const name = $('profile-edit-name').value.trim();
+  const birthDate = $('profile-edit-birth-date').value;
+  const phone = $('profile-edit-phone').value.trim();
+  const status = $('profile-details-status');
+  if (!name) { status.textContent = 'Enter your name.'; return; }
+  if (!birthDate) { status.textContent = 'Add your date of birth.'; return; }
+  if (birthDate > new Date().toISOString().slice(0, 10)) { status.textContent = 'Date of birth cannot be in the future.'; return; }
+  const button = $('profile-details-form').querySelector('button[type="submit"]');
+  button.disabled = true;
+  status.textContent = 'Saving profile details...';
+  const { error } = await db.from('profiles').update({ display_name: name, birth_date: birthDate, phone: phone || null }).eq('id', state.user.id);
+  button.disabled = false;
+  if (error) { status.textContent = 'Could not save your details. Apply the profile migration, then try again.'; console.error('Profile details update failed:', error.code || 'unknown'); return; }
+  state.profile = { ...state.profile, display_name: name, birth_date: birthDate, phone: phone || null };
+  $('profile-name').textContent = name;
+  $('user-avatar-initials').querySelector('img')?.setAttribute('alt', `Photo of ${name}`);
+  $('profile-avatar-large').querySelector('img')?.setAttribute('alt', `Photo of ${name}`);
+  if (!$('user-avatar-initials').querySelector('img')) $('user-avatar-initials').textContent = Array.from(name)[0] || 'U';
+  if (!$('profile-avatar-large').querySelector('img')) $('profile-avatar-large').textContent = Array.from(name)[0] || 'U';
+  status.textContent = 'Profile details saved.';
 });
 
 $('profile-logout-btn').addEventListener('click', async event => {
@@ -924,9 +950,10 @@ async function loadAdminPanel() {
   const usersBox = $('admin-users');
   pendingBox.innerHTML = '<p class="empty-state">Loading...</p>';
   usersBox.innerHTML = '<p class="empty-state">Loading...</p>';
-  const [clipsResult, usersResult] = await Promise.all([
+  const [clipsResult, usersResult, ownerDetailsResult] = await Promise.all([
     db.from('clips').select('id,storage_path,caption,media_type,status,created_at').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
-    db.from('profiles').select('id,display_name,role,created_at,is_banned').order('created_at', { ascending: false }).limit(100)
+    db.from('profiles').select('id,display_name,role,created_at,is_banned').order('created_at', { ascending: false }).limit(100),
+    isOwner() ? db.rpc('list_owner_users') : Promise.resolve({ data: [], error: null })
   ]);
   if (clipsResult.error) {
     pendingBox.innerHTML = '<p class="empty-state">Could not load the review queue.</p>';
@@ -938,12 +965,16 @@ async function loadAdminPanel() {
     }));
     pendingBox.innerHTML = reviewClips.length ? reviewClips.map(clip => clipCard(clip, true)).join('') : '<p class="empty-state">No clips pending review.</p>';
   }
-  if (usersResult.error) {
+  if (usersResult.error || (isOwner() && ownerDetailsResult.error)) {
     usersBox.innerHTML = '<p class="empty-state">Could not load users.</p>';
-    console.error('Admin users query failed:', usersResult.error.code || 'unknown');
+    console.error('Admin users query failed:', usersResult.error?.code || ownerDetailsResult.error?.code || 'unknown');
   } else {
-    const users = usersResult.data || [];
-    usersBox.innerHTML = users.length ? `<table><thead><tr><th>Name</th><th>Role</th><th>Access</th><th>Created</th>${isOwner() ? '<th>Manage Account</th>' : ''}</tr></thead><tbody>${users.map(user => `<tr><td>${escapeHtml(user.display_name || 'Member')}</td><td>${user.role === 'owner' ? 'Owner' : user.role === 'admin' ? 'Admin' : 'Member'}</td><td>${user.is_banned ? 'Blocked' : 'Active'}</td><td>${escapeHtml(formatDate(user.created_at))}</td>${isOwner() ? (user.id === state.user.id ? '<td>Protected owner</td>' : `<td class="admin-user-actions"><select data-role-choice="${escapeHtml(user.id)}" aria-label="Role for ${escapeHtml(user.display_name || 'Member')}"><option value="member" ${user.role === 'member' ? 'selected' : ''}>Member</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Owner</option></select><button class="secondary-btn role-save-btn" type="button" data-save-role="${escapeHtml(user.id)}" data-current-role="${escapeHtml(user.role)}">Save Role</button><button class="danger-btn account-access-btn" type="button" data-set-block="${escapeHtml(user.id)}" data-blocked="${user.is_banned ? 'false' : 'true'}">${user.is_banned ? 'Restore Access' : 'Block Access'}</button></td>`) : ''}</tr>`).join('')}</tbody></table>` : '<p class="empty-state">No users found.</p>';
+    const privateDetails = new Map((ownerDetailsResult.data || []).map(user => [user.id, user]));
+    const users = await Promise.all((usersResult.data || []).map(async user => {
+      const details = isOwner() ? privateDetails.get(user.id) : null;
+      return { ...user, email: details?.email || '', avatarUrl: details?.avatar_path ? await getPrivateAvatarUrl(details.avatar_path) : '' };
+    }));
+    usersBox.innerHTML = users.length ? `<table><thead><tr><th>Member</th>${isOwner() ? '<th>Email</th>' : ''}<th>Role</th><th>Access</th><th>Created</th>${isOwner() ? '<th>Manage Account</th>' : ''}</tr></thead><tbody>${users.map(user => `<tr><td><span class="admin-member-cell">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="">` : `<span class="participant-avatar-fallback">${escapeHtml(Array.from(user.display_name || 'M')[0])}</span>`}<b>${escapeHtml(user.display_name || 'Member')}</b></span></td>${isOwner() ? `<td>${escapeHtml(user.email)}</td>` : ''}<td>${user.role === 'owner' ? 'Owner' : user.role === 'admin' ? 'Admin' : 'Member'}</td><td>${user.is_banned ? 'Blocked' : 'Active'}</td><td>${escapeHtml(formatDate(user.created_at))}</td>${isOwner() ? (user.id === state.user.id ? '<td>Protected owner</td>' : `<td class="admin-user-actions"><select data-role-choice="${escapeHtml(user.id)}" aria-label="Role for ${escapeHtml(user.display_name || 'Member')}"><option value="member" ${user.role === 'member' ? 'selected' : ''}>Member</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Owner</option></select><button class="secondary-btn role-save-btn" type="button" data-save-role="${escapeHtml(user.id)}" data-current-role="${escapeHtml(user.role)}">Save Role</button><button class="danger-btn account-access-btn" type="button" data-set-block="${escapeHtml(user.id)}" data-blocked="${user.is_banned ? 'false' : 'true'}">${user.is_banned ? 'Restore Access' : 'Block Access'}</button></td>`) : ''}</tr>`).join('')}</tbody></table>` : '<p class="empty-state">No users found.</p>';
   }
 }
 
@@ -953,8 +984,8 @@ document.addEventListener('click', async event => {
     if (!isOwner()) return toast('Only the owner can block accounts.');
     const shouldBlock = accessButton.dataset.blocked === 'true';
     const confirmed = window.confirm(shouldBlock
-      ? 'Block this account from signing in and using Stride?'
-      : 'Restore this account’s access to Stride?');
+      ? 'Block this account from signing in and using Runwise Egypt?'
+      : 'Restore this account’s access to Runwise Egypt?');
     if (!confirmed) return;
     accessButton.disabled = true;
     const { data, error } = await db.functions.invoke('manage-account-access', {

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" role="img" aria-labelledby="title desc">
+  <title id="title">Runwise Egypt</title>
+  <desc id="desc">A black and white running community logo for Runwise Egypt.</desc>
+  <rect width="1080" height="1080" rx="180" fill="#080808"/>
+  <circle cx="540" cy="475" r="285" fill="none" stroke="#f5f5f5" stroke-opacity=".16" stroke-width="2"/>
+  <g fill="none" stroke="#f5f5f5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M292 478c74-80 143-109 226-103" stroke-width="20"/>
+    <path d="M304 533c67-52 126-72 191-70" stroke-width="14" stroke-opacity=".72"/>
+    <path d="M326 583c49-31 91-44 137-46" stroke-width="9" stroke-opacity=".42"/>
+    <path d="m529 401 63 39 84-54" stroke-width="24"/>
+    <path d="m557 436-42 93 90 38 69 91" stroke-width="28"/>
+    <path d="m551 453 91 4 70 62" stroke-width="19"/>
+    <path d="m570 566-105 49-60 79" stroke-width="24"/>
+    <path d="m622 583 18 103 82 53" stroke-width="24"/>
+  </g>
+  <circle cx="621" cy="360" r="28" fill="#f5f5f5"/>
+  <text x="540" y="832" text-anchor="middle" fill="#f5f5f5" font-family="Arial, Helvetica, sans-serif" font-size="112" font-style="italic" font-weight="800" letter-spacing="5">RUNWISE</text>
+  <text x="540" y="893" text-anchor="middle" fill="#f5f5f5" fill-opacity=".82" font-family="Arial, Helvetica, sans-serif" font-size="27" font-weight="700" letter-spacing="17">EGYPT</text>
+  <text x="540" y="965" text-anchor="middle" fill="#f5f5f5" fill-opacity=".58" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="600" letter-spacing="6">RUN · MOVE · LEARN</text>
+</svg>
