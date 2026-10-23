@@ -983,14 +983,15 @@ async function loadAdminPanel() {
     }));
     pendingBox.innerHTML = reviewClips.length ? reviewClips.map(clip => clipCard(clip, true)).join('') : '<p class="empty-state">No clips pending review.</p>';
   }
-  if (usersResult.error || (isOwner() && ownerDetailsResult.error)) {
-    usersBox.innerHTML = '<p class="empty-state">Could not load users.</p>';
-    console.error('Admin users query failed:', usersResult.error?.code || ownerDetailsResult.error?.code || 'unknown');
+  if (usersResult.error) {
+    usersBox.innerHTML = '<p class="empty-state">Could not load users. Please refresh and try again.</p>';
+    console.error('Admin users query failed:', usersResult.error.code || 'unknown');
   } else {
+    if (isOwner() && ownerDetailsResult.error) console.error('Owner contact details unavailable; apply owner-phone-migration.sql:', ownerDetailsResult.error.code || 'unknown');
     const privateDetails = new Map((ownerDetailsResult.data || []).map(user => [user.id, user]));
     const users = await Promise.all((usersResult.data || []).map(async user => {
       const details = isOwner() ? privateDetails.get(user.id) : null;
-      return { ...user, email: details?.email || '', phone: details?.phone || '', avatarUrl: details?.avatar_path ? await getPrivateAvatarUrl(details.avatar_path) : '' };
+      return { ...user, email: details?.email || '', phone: details?.phone || 'Not found', avatarUrl: details?.avatar_path ? await getPrivateAvatarUrl(details.avatar_path) : '' };
     }));
     usersBox.innerHTML = users.length ? `<table><thead><tr><th>Member</th>${isOwner() ? '<th>Email</th>' : ''}<th>Role</th><th>Access</th><th>Created</th>${isOwner() ? '<th>Manage Account</th>' : ''}</tr></thead><tbody>${users.map(user => `<tr><td><span class="admin-member-cell">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="">` : `<span class="participant-avatar-fallback">${escapeHtml(Array.from(user.display_name || 'M')[0])}</span>`}<b>${escapeHtml(user.display_name || 'Member')}</b></span></td>${isOwner() ? `<td><div>${escapeHtml(user.email)}</div><small class="owner-phone">Phone: ${escapeHtml(user.phone || 'Not provided')}</small></td>` : ''}<td>${user.role === 'owner' ? 'Owner' : user.role === 'admin' ? 'Admin' : 'Member'}</td><td>${user.is_banned ? 'Blocked' : 'Active'}</td><td>${escapeHtml(formatDate(user.created_at))}</td>${isOwner() ? (user.id === state.user.id ? '<td>Protected owner</td>' : `<td class="admin-user-actions"><select data-role-choice="${escapeHtml(user.id)}" aria-label="Role for ${escapeHtml(user.display_name || 'Member')}"><option value="member" ${user.role === 'member' ? 'selected' : ''}>Member</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Owner</option></select><button class="secondary-btn role-save-btn" type="button" data-save-role="${escapeHtml(user.id)}" data-current-role="${escapeHtml(user.role)}">Save Role</button><button class="danger-btn account-access-btn" type="button" data-set-block="${escapeHtml(user.id)}" data-blocked="${user.is_banned ? 'false' : 'true'}">${user.is_banned ? 'Restore Access' : 'Block Access'}</button></td>`) : ''}</tr>`).join('')}</tbody></table>` : '<p class="empty-state">No users found.</p>';
   }
