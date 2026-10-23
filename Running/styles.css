@@ -1,13 +1,14 @@
 :root {
-  --bg-main: #080808;
-  --bg-card: #141414;
-  --bg-input: #202020;
-  --primary: #f4f4f4;
-  --primary-hover: #ffffff;
-  --primary-ink: #080808;
-  --text-main: #f5f5f5;
-  --text-muted: #a6a6a6;
-  --border-color: #353535;
+  --bg-main: #111214;
+  --bg-card: #25282d;
+  --bg-input: #1b1e22;
+  --primary: #8edfff;
+  --primary-hover: #b4ecff;
+  --primary-ink: #111214;
+  --text-main: #f2f5f8;
+  --text-muted: #aab1bb;
+  --text-secondary: #68717d;
+  --border-color: #42464d;
   --radius: 14px;
   --shadow: 0 18px 48px rgba(0, 0, 0, .42);
 }
@@ -25,7 +26,7 @@ input[type="file"]::file-selector-button { margin-inline-end: 9px; padding: 8px 
 
 .auth-container { min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
 .auth-box { width: 100%; max-width: 440px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 18px; padding: 32px 26px; box-shadow: var(--shadow); text-align: center; }
-.auth-brand { color: var(--primary); font: italic 800 32px/1 'Sora', sans-serif; letter-spacing: .035em; text-transform: uppercase; margin-bottom: 8px; }
+.auth-brand { color: var(--text-main); font: italic 800 32px/1 'Sora', sans-serif; letter-spacing: .035em; text-transform: uppercase; margin-bottom: 8px; }
 .brand-mark, .brand-dot { color: var(--primary); }
 .auth-brand::after { content: 'RUNNING COMMUNITY'; display: block; margin-top: 9px; color: var(--text-muted); font: 600 9px/1 'Inter', sans-serif; letter-spacing: .24em; }
 .auth-note { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
@@ -49,13 +50,13 @@ input[type="file"]::file-selector-button { margin-inline-end: 9px; padding: 8px 
 .text-link-btn { border: 0; background: transparent; color: var(--text-muted); text-decoration: underline; padding: 4px; }
 #auth-message { margin-top: 15px; color: var(--primary); font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
 
-.top-nav { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 22px; padding: 14px clamp(16px, 4vw, 54px); background: rgba(8, 8, 8, .94); border-bottom: 1px solid var(--border-color); backdrop-filter: blur(14px); }
-.brand { flex-shrink: 0; color: var(--primary); font: italic 800 22px/1 'Sora', sans-serif; letter-spacing: .035em; text-transform: uppercase; }
+.top-nav { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: flex-start; gap: 18px; padding: 14px clamp(16px, 4vw, 54px); background: rgba(17, 18, 20, .96); border-bottom: 1px solid var(--border-color); backdrop-filter: blur(14px); }
+.brand { flex-shrink: 0; color: var(--text-main); font: italic 800 22px/1 'Sora', sans-serif; letter-spacing: .035em; text-transform: uppercase; }
 .brand::after { content: 'RUNNING COMMUNITY'; display: block; margin-top: 6px; color: var(--text-muted); font: 600 8px/1 'Inter', sans-serif; letter-spacing: .2em; }
-.nav-links { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 5px; }
+.nav-links { flex: 1; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 5px; }
 .nav-links button { border: 0; border-radius: 9px; background: transparent; color: var(--text-muted); padding: 10px 12px; font-size: 14px; font-weight: 700; }
-.nav-links button:hover { color: #fff; background: rgba(255, 255, 255, .09); }
-.nav-links button.active { color: #080808; background: #fff; box-shadow: none; }
+.nav-links button:hover { color: var(--primary); background: rgba(142, 223, 255, .1); }
+.nav-links button.active { color: var(--primary-ink); background: var(--primary); box-shadow: none; }
 .profile-nav-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
 .nav-profile-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .user-menu { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
@@ -70,8 +71,8 @@ button.avatar { padding: 0; cursor: pointer; }
 .page { display: none; animation: appear .2s ease; }
 .page.active { display: block; }
 @keyframes appear { from { opacity: .55; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-.hero { position: relative; overflow: hidden; padding: clamp(38px, 5vw, 62px) clamp(28px, 5vw, 52px); margin-bottom: 30px; border: 1px solid #393939; border-radius: 18px; background: radial-gradient(ellipse at 16% 18%, rgba(255, 255, 255, .13), transparent 38%), linear-gradient(125deg, #252525, #101010 68%); }
-.hero::before { content: 'RUNWISE  /  RUNNING COMMUNITY'; display: block; margin-bottom: 24px; direction: ltr; text-align: left; color: #bcbcbc; font: 600 10px/1 'Inter', sans-serif; letter-spacing: .2em; }
+.hero { position: relative; overflow: hidden; padding: clamp(38px, 5vw, 62px) clamp(28px, 5vw, 52px); margin-bottom: 30px; border: 1px solid #393939; border-radius: 18px; background: radial-gradient(ellipse at 16% 18%, rgba(142, 223, 255, .16), transparent 38%), linear-gradient(125deg, #25282d, #111214 68%); }
+.hero::before { content: 'ONE MORE STEP.  /  RUNNING COMMUNITY'; display: block; margin-bottom: 24px; direction: ltr; text-align: left; color: var(--primary); font: 600 10px/1 'Inter', sans-serif; letter-spacing: .2em; }
 .hero h2 { position: relative; z-index: 1; font-size: clamp(26px, 4vw, 38px); margin-bottom: 10px; }
 .hero p { color: var(--text-muted); font-size: 16px; line-height: 1.8; }
 .section-title { font-size: 22px; font-weight: 800; margin: 0 0 18px; }
@@ -223,3 +224,11 @@ button.avatar { padding: 0; cursor: pointer; }
 .admin-member-cell .participant-avatar-fallback { width: 34px; height: 34px; flex-basis: 34px; }
 .admin-users td small { display: block; margin-top: 3px; color: var(--text-muted); font-size: 12px; }
 #profile-edit-name, #profile-edit-birth-date, #profile-edit-phone { width: 100%; min-width: 0; padding: 12px 14px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 9px; color: var(--text-main); font-size: 15px; }
+
+.go-run-btn,.hero-run-btn { display:inline-flex; align-items:center; justify-content:center; gap:12px; border:1px solid var(--primary); background:var(--primary); color:var(--primary-ink); font-weight:800; border-radius:10px; padding:11px 17px; }
+.go-run-btn { flex:0 0 auto; }
+.go-run-btn:hover,.hero-run-btn:hover { background:var(--primary-hover); transform:translateY(-1px); }
+.hero-run-btn { margin-top:22px; border-radius:999px; padding:15px 22px; font-size:16px; }
+#upcoming-runs-section { scroll-margin-top:120px; }
+.admin-users .owner-phone { display:block; margin-top:4px; color:var(--primary); font-size:12px; font-weight:700; }
+@media (max-width:650px) { .hero-run-btn { width:100%; } }

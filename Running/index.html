@@ -3,13 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#080808">
-  <link rel="icon" type="image/svg+xml" href="runwise-egypt-logo.svg">
-  <title>Runwise Egypt — Running Community</title>
+  <meta name="theme-color" content="#111214">
+  <meta name="description" content="ONE MORE STEP. GO BEYOND YOUR LIMITS. Find your next run and move forward together.">
+  <link rel="icon" type="image/svg+xml" href="one-more-step-logo.svg">
+  <title>ONE MORE STEP. — Running Community</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=23">
+  <link rel="stylesheet" href="styles.css?v=24">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -17,7 +18,7 @@
   <!-- Sign-in and email confirmation -->
   <div class="auth-container" id="auth-screen">
     <div class="auth-box">
-      <div class="auth-brand">Runwise Egypt</div>
+      <div class="auth-brand">ONE MORE STEP.</div>
       <p class="auth-note">Sign in or create a new account</p>
       
       <div class="auth-tabs">
@@ -75,7 +76,8 @@
   <!-- Main site interface -->
   <div id="app-shell">
     <header class="top-nav">
-      <div class="brand">Runwise Egypt</div>
+      <div class="brand">ONE MORE STEP.</div>
+      <button class="go-run-btn" type="button" data-scroll-runs>Go Run <span aria-hidden="true">↗</span></button>
       <nav class="nav-links" id="main-nav">
         <button data-page="home" class="active">Home</button>
         <button data-page="clips">Clips</button>
@@ -91,16 +93,17 @@
     </header>
 
     <main class="main-content">
-      <div class="breadcrumb">Runwise Egypt / <span id="crumb-active">Home</span></div>
+      <div class="breadcrumb">ONE MORE STEP. / <span id="crumb-active">Home</span></div>
 
       <!-- Home page -->
       <section class="page active" id="page-home">
         <div class="hero">
-          <h2>Ready for your next run?</h2>
-          <p>Explore upcoming runs and book your spot.</p>
+          <h2>GO BEYOND YOUR LIMITS.</h2>
+          <p>Find your next run. Take one more step.</p>
+          <button class="hero-run-btn" type="button" data-scroll-runs>Find Your Next Run <span aria-hidden="true">↗</span></button>
         </div>
         <div class="search-bar"><input type="text" id="search" placeholder="Search runs or locations..."></div>
-        <section class="runs-section" aria-labelledby="upcoming-runs-title">
+        <section class="runs-section" id="upcoming-runs-section" aria-labelledby="upcoming-runs-title">
           <h2 class="section-title" id="upcoming-runs-title">Upcoming Runs</h2>
           <div class="runs-grid" id="upcoming-runs"></div>
         </section>
@@ -188,7 +191,7 @@
           <div class="avatar-large" id="profile-avatar-large">U</div>
           <h3 id="profile-name">User</h3>
           <p id="profile-email" class="muted-text">email@example.com</p>
-          <span class="role-badge" id="profile-role">Runwise Egypt Member</span>
+          <span class="role-badge" id="profile-role">ONE MORE STEP. Member</span>
           <form id="profile-photo-form" class="profile-photo-form">
             <label for="profile-photo-file">Profile photo (JPG, PNG or WebP, up to 5 MB)</label>
             <input id="profile-photo-file" type="file" accept="image/jpeg,image/png,image/webp">
@@ -232,6 +235,6 @@
     <div class="toast" id="toast"></div>
   </div>
 
-  <script src="app.js?v=23"></script>
+  <script src="app.js?v=24"></script>
 </body>
 </html>

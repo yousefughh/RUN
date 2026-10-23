@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">ONE MORE STEP.</title>
+  <desc id="desc">Ice blue running mark for the ONE MORE STEP running community.</desc>
+  <rect width="512" height="512" rx="112" fill="#111214"/>
+  <circle cx="256" cy="226" r="158" fill="#25282D" stroke="#68717D" stroke-opacity=".45" stroke-width="3"/>
+  <g fill="none" stroke="#8EDFFF" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m164 218 79-64 75 20 42-37" stroke-width="24"/>
+    <path d="m242 154 13 71-63 40-38 62" stroke-width="26"/>
+    <path d="m255 224 73 35 39 65" stroke-width="25"/>
+    <path d="m206 264 70 7 51-33" stroke-width="21"/>
+    <path d="m193 267 28 58-28 41" stroke-width="22"/>
+    <path d="m304 258-14 68 43 40" stroke-width="22"/>
+  </g>
+  <circle cx="275" cy="126" r="19" fill="#F2F5F8"/>
+  <path d="M372 113h34v34" fill="none" stroke="#8EDFFF" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m405 114-46 46" fill="none" stroke="#8EDFFF" stroke-width="11" stroke-linecap="round"/>
+  <text x="256" y="433" text-anchor="middle" fill="#F2F5F8" font-family="Arial,Helvetica,sans-serif" font-size="42" font-style="italic" font-weight="800" letter-spacing="1">ONE MORE STEP.</text>
+  <text x="256" y="470" text-anchor="middle" fill="#8EDFFF" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700" letter-spacing="4">GO BEYOND YOUR LIMITS.</text>
+</svg>
+

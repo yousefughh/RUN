@@ -1,4 +1,4 @@
-/* Runwise Egypt + Supabase Client Config */
+/* ONE MORE STEP. + Supabase Client Config */
 const SUPABASE_URL = 'https://trqrpoployvsuuitffji.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_H54WIGq4spz51QFkSjmR8w_ohdXdv90';
 const AUTH_REDIRECT_URL = 'https://yousefughh.github.io/RUN/';
@@ -40,7 +40,7 @@ async function renderChatMessages(messages, runId) {
   const pathIndexes = new Map(paths.map((path, index) => [path, index]));
   box.innerHTML = messages?.length
     ? [...messages].reverse().map(message => {
-      const name = message.sender_name || 'Runwise Egypt member';
+      const name = message.sender_name || 'ONE MORE STEP. member';
       const initial = Array.from(name.trim())[0] || 'U';
       const avatarIndex = pathIndexes.get(message.avatar_path);
       const avatar = avatarIndex === undefined
@@ -302,10 +302,12 @@ async function loadSession(session) {
 
   const { data: details, error: detailsError } = await db.rpc('get_my_profile_details');
   if (detailsError) console.warn('Private profile details are unavailable until the profile migration is applied.');
-  state.profile = { ...profile, ...(Array.isArray(details) ? details[0] : details || {}) };
+  const privateDetails = Array.isArray(details) ? details[0] : details || {};
+  const savedMetadata = session.user.user_metadata || {};
+  state.profile = { ...profile, ...privateDetails, birth_date: privateDetails.birth_date || savedMetadata.birth_date || null, phone: privateDetails.phone || savedMetadata.phone || null, display_name: privateDetails.display_name || savedMetadata.display_name || profile.display_name };
   state.requiresProfileUpdate = !state.profile.birth_date;
 
-  const name = profile.display_name || 'Runwise Egypt user';
+  const name = profile.display_name || 'ONE MORE STEP. user';
   const email = state.user.email || '';
   const initial = Array.from(name)[0] || 'U';
 
@@ -315,7 +317,7 @@ async function loadSession(session) {
   $('profile-avatar-large').innerHTML = avatarMarkup;
   $('profile-name').textContent = name;
   $('profile-email').textContent = email;
-  $('profile-role').textContent = state.profile.role === 'owner' ? 'Runwise Egypt Owner' : isAdmin() ? 'Admin' : 'Runwise Egypt Member';
+  $('profile-role').textContent = state.profile.role === 'owner' ? 'ONE MORE STEP. Owner' : isAdmin() ? 'Admin' : 'ONE MORE STEP. Member';
   $('profile-edit-name').value = state.profile.display_name || '';
   $('profile-edit-birth-date').value = state.profile.birth_date || '';
   $('profile-edit-phone').value = state.profile.phone || '';
@@ -370,7 +372,7 @@ async function loadParticipants(runId) {
   }
   const participants = result.data || [];
   const cards = await Promise.all(participants.map(async participant => {
-    const name = participant.display_name || 'Runwise Egypt member';
+    const name = participant.display_name || 'ONE MORE STEP. member';
     const avatarUrl = participant.avatar_path ? await getChatAvatarUrl(participant.avatar_path) : '';
     const avatar = avatarUrl
       ? `<img class="participant-avatar" src="${escapeHtml(avatarUrl)}" alt="Photo of ${escapeHtml(name)}">`
@@ -378,7 +380,7 @@ async function loadParticipants(runId) {
     const action = isAdmin() && participant.participant_id
       ? `<button class="danger-btn participant-remove-btn" type="button" data-remove-run-user="${escapeHtml(participant.participant_id)}" data-run-id="${escapeHtml(runId)}">Remove &amp; Block from Chat</button>`
       : '';
-    return `<article class="participant-card">${avatar}<div><b>${escapeHtml(name)}</b><p class="muted-text">${escapeHtml(run?.title || 'Runwise Egypt run')}</p></div>${action}</article>`;
+    return `<article class="participant-card">${avatar}<div><b>${escapeHtml(name)}</b><p class="muted-text">${escapeHtml(run?.title || 'ONE MORE STEP. run')}</p></div>${action}</article>`;
   }));
   box.innerHTML = cards.length ? cards.join('') : '<p class="empty-state">No one has booked this run yet.</p>';
 
@@ -395,7 +397,7 @@ async function loadParticipants(runId) {
   }
   const blocked = blockedResult.data || [];
   blockedBox.innerHTML = blocked.length ? blocked.map(person =>
-    `<article class="participant-card participant-card-blocked"><div class="participant-avatar participant-avatar-fallback">${escapeHtml(Array.from((person.display_name || 'U').trim())[0] || 'U')}</div><div><b>${escapeHtml(person.display_name || 'Runwise Egypt member')}</b><p class="muted-text">Blocked from ${escapeHtml(run?.title || 'this run')}</p></div><button class="secondary-btn participant-restore-btn" type="button" data-restore-run-user="${escapeHtml(person.participant_id)}" data-run-id="${escapeHtml(runId)}">Restore Chat Access</button></article>`
+    `<article class="participant-card participant-card-blocked"><div class="participant-avatar participant-avatar-fallback">${escapeHtml(Array.from((person.display_name || 'U').trim())[0] || 'U')}</div><div><b>${escapeHtml(person.display_name || 'ONE MORE STEP. member')}</b><p class="muted-text">Blocked from ${escapeHtml(run?.title || 'this run')}</p></div><button class="secondary-btn participant-restore-btn" type="button" data-restore-run-user="${escapeHtml(person.participant_id)}" data-run-id="${escapeHtml(runId)}">Restore Chat Access</button></article>`
   ).join('') : '<p class="empty-state">No one is blocked from this run chat.</p>';
 }
 
@@ -452,7 +454,7 @@ function navigateTo(pageId) {
   document.querySelectorAll('[data-page]').forEach(item => item.classList.toggle('active', item.dataset.page === pageId));
   
   const names = { clips: 'Clips', admin: 'Admin', home: 'Home', tickets: 'My Runs', chats: 'Chats', profile: 'Profile', organizer: 'Manage Runs' };
-  $('crumb-active').textContent = names[pageId] || 'Runwise Egypt';
+  $('crumb-active').textContent = names[pageId] || 'ONE MORE STEP.';
 
   if (pageId === 'chats') renderChatsList();
   if (pageId === 'clips') loadClips();
@@ -483,7 +485,7 @@ function createRunCard(run) {
   const seatText = seats === 0 ? 'Sold out' : `${seats} spots available`;
   return `<article class="run-card">
     <div class="run-image"><img loading="lazy" decoding="async" src="${escapeHtml(run.image_url || 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=600&auto=format&fit=crop&q=80')}" alt=""><span class="run-badge ${seats === 0 ? 'sold-out' : ''}">${seatText}</span></div>
-    <div class="run-info"><div class="run-org">✦ Organized by Runwise Egypt</div>
+    <div class="run-info"><div class="run-org">✦ Organized by ONE MORE STEP.</div>
     <h3>${escapeHtml(run.title)}</h3><div class="run-detail"><span>◷ ${escapeHtml(formatDate(run.starts_at))}</span><span>⌖ ${escapeHtml(run.location)} · ${escapeHtml(run.distance_km)} km</span></div>
     <div class="run-foot"><div class="run-price">${escapeHtml(run.price || 'Free')}</div><button class="run-open" data-event="${escapeHtml(run.id)}">Details</button></div></div></article>`;
 }
@@ -534,7 +536,7 @@ function openModal(id) {
   $('modal-content').innerHTML = `
     <div class="modal-body">
       <h2>${escapeHtml(run.title)}</h2>
-      <p class="muted-text">Run organizer: Runwise Egypt</p>
+      <p class="muted-text">Run organizer: ONE MORE STEP.</p>
       <p>◷ Date: ${escapeHtml(formatDate(run.starts_at))}</p>
       <p>⌖ Meeting point: ${escapeHtml(run.location)}</p>
       <p>Distance: ${escapeHtml(run.distance_km)} km</p>
@@ -803,7 +805,7 @@ async function loadClips() {
 function clipCard(clip, reviewMode) {
   const media = clip.signedUrl ? (clip.media_type === 'video'
     ? `<video src="${escapeHtml(clip.signedUrl)}" controls preload="metadata" playsinline></video>`
-    : `<img src="${escapeHtml(clip.signedUrl)}" alt="Clip from the Runwise Egypt community" loading="lazy">`) : '<div class="empty-state">Could not load file</div>';
+    : `<img src="${escapeHtml(clip.signedUrl)}" alt="Clip from the ONE MORE STEP. community" loading="lazy">`) : '<div class="empty-state">Could not load file</div>';
   const status = `<span class="clip-status ${escapeHtml(clip.status)}">${clip.status === 'pending' ? 'Pending review' : clip.status === 'approved' ? 'Approved' : 'Rejected'}</span>`;
   const actions = reviewMode && clip.status === 'pending' ? `<div class="clip-actions"><button class="primary-btn" data-review-clip="${escapeHtml(clip.id)}" data-status="approved">Approve</button><button class="secondary-btn" data-review-clip="${escapeHtml(clip.id)}" data-status="rejected">Reject</button></div>` : '';
   return `<article class="clip-card">${media}<div class="clip-card-body">${status}<p>${escapeHtml(clip.caption || '')}</p><small>${escapeHtml(formatDate(clip.created_at))}</small>${actions}</div></article>`;
@@ -842,7 +844,7 @@ $('profile-photo-form').addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.currentTarget;
   const button = form.querySelector('button[type="submit"]');
-  const newName = state.profile?.display_name || 'Runwise Egypt member';
+  const newName = state.profile?.display_name || 'ONE MORE STEP. member';
   const file = $('profile-photo-file').files?.[0];
   const status = $('profile-photo-status');
   const accepted = ['image/jpeg', 'image/png', 'image/webp'];
@@ -927,9 +929,11 @@ $('profile-details-form').addEventListener('submit', async event => {
   const button = $('profile-details-form').querySelector('button[type="submit"]');
   button.disabled = true;
   status.textContent = 'Saving profile details...';
+  const { error: metadataError } = await db.auth.updateUser({ data: { display_name: name, birth_date: birthDate, phone: phone || null } });
   const { error } = await db.from('profiles').update({ display_name: name, birth_date: birthDate, phone: phone || null }).eq('id', state.user.id);
   button.disabled = false;
-  if (error) { status.textContent = 'Could not save your details. Apply the profile migration, then try again.'; console.error('Profile details update failed:', error.code || 'unknown'); return; }
+  if (error) { button.disabled = false; status.textContent = metadataError ? 'Could not save your details. Apply the profile migration, then try again.' : 'Your details are saved to your account, but profile sync needs attention.'; console.error('Profile details update failed:', error.code || 'unknown'); return; }
+  if (metadataError) console.warn('Profile details saved in database; account backup could not be updated.');
   state.profile = { ...state.profile, display_name: name, birth_date: birthDate, phone: phone || null };
   state.requiresProfileUpdate = false;
   $('profile-name').textContent = name;
@@ -983,7 +987,7 @@ async function loadAdminPanel() {
       const details = isOwner() ? privateDetails.get(user.id) : null;
       return { ...user, email: details?.email || '', phone: details?.phone || '', avatarUrl: details?.avatar_path ? await getPrivateAvatarUrl(details.avatar_path) : '' };
     }));
-    usersBox.innerHTML = users.length ? `<table><thead><tr><th>Member</th>${isOwner() ? '<th>Email</th>' : ''}<th>Role</th><th>Access</th><th>Created</th>${isOwner() ? '<th>Manage Account</th>' : ''}</tr></thead><tbody>${users.map(user => `<tr><td><span class="admin-member-cell">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="">` : `<span class="participant-avatar-fallback">${escapeHtml(Array.from(user.display_name || 'M')[0])}</span>`}<b>${escapeHtml(user.display_name || 'Member')}</b></span></td>${isOwner() ? `<td><div>${escapeHtml(user.email)}</div><small>${escapeHtml(user.phone || 'No phone provided')}</small></td>` : ''}<td>${user.role === 'owner' ? 'Owner' : user.role === 'admin' ? 'Admin' : 'Member'}</td><td>${user.is_banned ? 'Blocked' : 'Active'}</td><td>${escapeHtml(formatDate(user.created_at))}</td>${isOwner() ? (user.id === state.user.id ? '<td>Protected owner</td>' : `<td class="admin-user-actions"><select data-role-choice="${escapeHtml(user.id)}" aria-label="Role for ${escapeHtml(user.display_name || 'Member')}"><option value="member" ${user.role === 'member' ? 'selected' : ''}>Member</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Owner</option></select><button class="secondary-btn role-save-btn" type="button" data-save-role="${escapeHtml(user.id)}" data-current-role="${escapeHtml(user.role)}">Save Role</button><button class="danger-btn account-access-btn" type="button" data-set-block="${escapeHtml(user.id)}" data-blocked="${user.is_banned ? 'false' : 'true'}">${user.is_banned ? 'Restore Access' : 'Block Access'}</button></td>`) : ''}</tr>`).join('')}</tbody></table>` : '<p class="empty-state">No users found.</p>';
+    usersBox.innerHTML = users.length ? `<table><thead><tr><th>Member</th>${isOwner() ? '<th>Email</th>' : ''}<th>Role</th><th>Access</th><th>Created</th>${isOwner() ? '<th>Manage Account</th>' : ''}</tr></thead><tbody>${users.map(user => `<tr><td><span class="admin-member-cell">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="">` : `<span class="participant-avatar-fallback">${escapeHtml(Array.from(user.display_name || 'M')[0])}</span>`}<b>${escapeHtml(user.display_name || 'Member')}</b></span></td>${isOwner() ? `<td><div>${escapeHtml(user.email)}</div><small class="owner-phone">Phone: ${escapeHtml(user.phone || 'Not provided')}</small></td>` : ''}<td>${user.role === 'owner' ? 'Owner' : user.role === 'admin' ? 'Admin' : 'Member'}</td><td>${user.is_banned ? 'Blocked' : 'Active'}</td><td>${escapeHtml(formatDate(user.created_at))}</td>${isOwner() ? (user.id === state.user.id ? '<td>Protected owner</td>' : `<td class="admin-user-actions"><select data-role-choice="${escapeHtml(user.id)}" aria-label="Role for ${escapeHtml(user.display_name || 'Member')}"><option value="member" ${user.role === 'member' ? 'selected' : ''}>Member</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Owner</option></select><button class="secondary-btn role-save-btn" type="button" data-save-role="${escapeHtml(user.id)}" data-current-role="${escapeHtml(user.role)}">Save Role</button><button class="danger-btn account-access-btn" type="button" data-set-block="${escapeHtml(user.id)}" data-blocked="${user.is_banned ? 'false' : 'true'}">${user.is_banned ? 'Restore Access' : 'Block Access'}</button></td>`) : ''}</tr>`).join('')}</tbody></table>` : '<p class="empty-state">No users found.</p>';
   }
 }
 
@@ -993,8 +997,8 @@ document.addEventListener('click', async event => {
     if (!isOwner()) return toast('Only the owner can block accounts.');
     const shouldBlock = accessButton.dataset.blocked === 'true';
     const confirmed = window.confirm(shouldBlock
-      ? 'Block this account from signing in and using Runwise Egypt?'
-      : 'Restore this account’s access to Runwise Egypt?');
+      ? 'Block this account from signing in and using ONE MORE STEP.?'
+      : 'Restore this account’s access to ONE MORE STEP.?');
     if (!confirmed) return;
     accessButton.disabled = true;
     const { data, error } = await db.functions.invoke('manage-account-access', {

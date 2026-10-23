@@ -454,7 +454,7 @@ BEGIN
     RAISE EXCEPTION 'owner_access_required';
   END IF;
   RETURN QUERY
-  SELECT p.id, u.email::text, p.phone, p.display_name, p.avatar_path, p.role, p.created_at
+  SELECT p.id, u.email::text, COALESCE(p.phone, NULLIF(u.raw_user_meta_data ->> 'phone', '')), p.display_name, p.avatar_path, p.role, p.created_at
   FROM public.profiles p JOIN auth.users u ON u.id = p.id
   ORDER BY p.created_at DESC LIMIT 500;
 END;

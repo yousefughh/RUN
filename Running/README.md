@@ -1,4 +1,4 @@
-# Runwise Egypt setup
+# ONE MORE STEP. — GO BEYOND YOUR LIMITS.
 
 واجهة عربية ثابتة للجريات والحجوزات والمحادثات ومقاطع المجتمع، مبنية على Supabase Auth وPostgreSQL وStorage.
 
