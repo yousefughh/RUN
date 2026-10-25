@@ -461,3 +461,42 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.list_owner_users() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.list_owner_users() TO authenticated;
+
+-- Admins can see the total account count; private account details remain owner-only.
+CREATE OR REPLACE FUNCTION public.get_admin_dashboard_stats()
+RETURNS TABLE (registered_users bigint)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.is_admin_or_owner() THEN
+    RAISE EXCEPTION 'admin_access_required';
+  END IF;
+  RETURN QUERY SELECT count(*)::bigint FROM auth.users;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.get_admin_dashboard_stats() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_admin_dashboard_stats() TO authenticated;
+
+-- Private site presence: members publish their own ID; admins may read the states.
+DROP POLICY IF EXISTS "Authenticated users publish their own site presence" ON realtime.messages;
+CREATE POLICY "Authenticated users publish their own site presence" ON realtime.messages
+FOR INSERT TO authenticated WITH CHECK (
+  (SELECT realtime.topic()) = 'site-presence' AND extension = 'presence'
+  AND payload ->> 'user_id' = (SELECT auth.uid()::text)
+);
+DROP POLICY IF EXISTS "Admins can read site presence" ON realtime.messages;
+CREATE POLICY "Admins can read site presence" ON realtime.messages
+FOR SELECT TO authenticated USING (
+  (SELECT realtime.topic()) = 'site-presence' AND extension = 'presence'
+  AND public.is_admin_or_owner()
+);
+DROP POLICY IF EXISTS "Authenticated users can join site presence" ON realtime.messages;
+CREATE POLICY "Authenticated users can join site presence" ON realtime.messages
+FOR SELECT TO authenticated USING (
+  (SELECT realtime.topic()) = 'site-presence' AND extension = 'broadcast'
+);
+DROP POLICY IF EXISTS "Authenticated users can leave site presence" ON realtime.messages;
+CREATE POLICY "Authenticated users can leave site presence" ON realtime.messages
+FOR DELETE TO authenticated USING (
+  (SELECT realtime.topic()) = 'site-presence' AND extension = 'presence'
+  AND payload ->> 'user_id' = (SELECT auth.uid()::text)
+);

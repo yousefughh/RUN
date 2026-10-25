@@ -232,3 +232,13 @@ button.avatar { padding: 0; cursor: pointer; }
 #upcoming-runs-section { scroll-margin-top:120px; }
 .admin-users .owner-phone { display:block; margin-top:4px; color:var(--primary); font-size:12px; font-weight:700; }
 @media (max-width:650px) { .top-nav { grid-template-columns:minmax(0,1fr) auto auto; } .go-run-btn { padding:9px 11px; font-size:13px; } .user-menu { grid-column:3; grid-row:1; } .hero-run-btn { width:100%; } }
+
+.admin-nav-button { display: inline-flex; align-items: center; gap: 7px; }
+.admin-count-badge { min-width: 20px; padding: 2px 6px; border-radius: 999px; color: #15131a; background: var(--primary); font-size: 12px; font-weight: 800; text-align: center; }
+.admin-summary { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0 2rem; }
+.admin-summary > div { display: grid; gap: .25rem; min-width: 170px; padding: 1rem 1.25rem; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-card); }
+.admin-summary strong { font-size: 1.6rem; }
+.admin-summary span { color: var(--text-muted); font-size: .9rem; }
+.admin-presence { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.admin-presence-dot { width: 9px; height: 9px; border-radius: 50%; background: #777; }
+.admin-presence-dot.online { background: #27c978; box-shadow: 0 0 8px #27c97888; }

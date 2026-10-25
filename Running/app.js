@@ -18,6 +18,54 @@ const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const isAdmin = () => ['admin', 'owner'].includes(state.profile?.role);
 const isOwner = () => state.profile?.role === 'owner';
+let sitePresenceChannel = null;
+let onlineUserIds = new Set();
+
+function calculateAge(value) {
+  if (!value) return null;
+  const dob = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(dob.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  if (today.getMonth() < dob.getMonth() || (today.getMonth() === dob.getMonth() && today.getDate() < dob.getDate())) age--;
+  return age >= 0 && age < 125 ? age : null;
+}
+
+function updateAdminPresence() {
+  const count = $('admin-online-count');
+  if (count) count.textContent = String(onlineUserIds.size);
+  document.querySelectorAll('#admin-users tr[data-user-id]').forEach(row => {
+    const online = onlineUserIds.has(row.dataset.userId);
+    const dot = row.querySelector('.admin-presence-dot');
+    if (dot) { dot.classList.toggle('online', online); dot.title = online ? 'Online' : 'Offline'; }
+    const label = row.querySelector('.admin-presence-label');
+    if (label) label.textContent = online ? 'Online' : 'Offline';
+  });
+}
+
+async function startSitePresence() {
+  if (!state.user?.id || !db || sitePresenceChannel) return;
+  const channel = db.channel('site-presence', { config: { private: true, presence: { key: state.user.id } } });
+  if (isAdmin()) channel.on('presence', { event: 'sync' }, () => {
+    onlineUserIds = new Set(Object.values(channel.presenceState()).flat().map(p => p.user_id).filter(Boolean));
+    updateAdminPresence();
+  });
+  sitePresenceChannel = channel;
+  channel.subscribe(async status => {
+    if (status === 'SUBSCRIBED') {
+      const { error } = await channel.track({ user_id: state.user.id });
+      if (error) console.warn('Presence tracking unavailable; apply the current Supabase migration.');
+    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') console.warn('Site presence unavailable; apply the current Supabase migration.');
+  });
+}
+
+async function stopSitePresence() {
+  const channel = sitePresenceChannel;
+  sitePresenceChannel = null;
+  onlineUserIds = new Set();
+  updateAdminPresence();
+  if (channel && db) await db.removeChannel(channel);
+}
 
 async function getPrivateAvatarUrl(path) {
   const { data, error } = await db.storage.from('runmate-avatars').createSignedUrl(path, 86400);
@@ -322,6 +370,9 @@ async function loadSession(session) {
   $('profile-avatar-large').innerHTML = avatarMarkup;
   $('profile-name').textContent = name;
   $('profile-email').textContent = email;
+  const age = calculateAge(state.profile.birth_date);
+  $('profile-age').textContent = age === null ? '' : `Age: ${age}`;
+  $('profile-age').hidden = age === null;
   $('profile-role').textContent = state.profile.role === 'owner' ? 'ONE MORE STEP. Owner' : isAdmin() ? 'Admin' : 'ONE MORE STEP. Member';
   $('profile-edit-name').value = state.profile.display_name || '';
   $('profile-edit-birth-date').value = state.profile.birth_date || '';
@@ -331,6 +382,7 @@ async function loadSession(session) {
     : '';
 
   document.querySelectorAll('.admin-only').forEach(el => el.hidden = !isAdmin());
+  if (isAdmin()) void startSitePresence();
 
   await refreshData();
   navigateTo('home');
@@ -852,23 +904,35 @@ $('profile-photo-form').addEventListener('submit', async event => {
   const newName = state.profile?.display_name || 'ONE MORE STEP. member';
   const file = $('profile-photo-file').files?.[0];
   const status = $('profile-photo-status');
-  const accepted = ['image/jpeg', 'image/png', 'image/webp'];
   if (!file) return status.textContent = 'Choose a photo to upload.';
-  if (file && !accepted.includes(file.type)) return status.textContent = 'Choose a JPG, PNG, or WebP image.';
   if (file && file.size > 5 * 1024 * 1024) return status.textContent = 'The image must be no larger than 5 MB.';
+
+  let contentType;
+  let extension;
+  try {
+    const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) { contentType = 'image/jpeg'; extension = 'jpg'; }
+    else if ([137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => bytes[index] === byte)) { contentType = 'image/png'; extension = 'png'; }
+    else if (String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF' && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP') { contentType = 'image/webp'; extension = 'webp'; }
+  } catch (error) { console.error('Could not inspect profile image:', error?.name || 'unknown'); }
+  if (!contentType) return status.textContent = 'Unsupported photo. Use a JPG, PNG, or WebP image (HEIC photos are not supported).';
 
   button.disabled = true;
   status.textContent = 'Uploading your profile photo...';
   const oldPath = state.profile?.avatar_path;
   let path = null;
   if (file) {
-    const extension = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[file.type];
     path = `${state.user.id}/${crypto.randomUUID()}.${extension}`;
-    const { error: uploadError } = await db.storage.from('runmate-avatars').upload(path, file, { contentType: file.type, upsert: false });
+    const { error: uploadError } = await db.storage.from('runmate-avatars').upload(path, file, { contentType, upsert: false });
     if (uploadError) {
       button.disabled = false;
-      status.textContent = 'Could not upload the photo. Please try again.';
-      console.error('Profile photo upload failed:', uploadError.statusCode || 'unknown');
+      const code = `${uploadError.statusCode || ''} ${uploadError.error || ''} ${uploadError.message || ''}`;
+      status.textContent = /bucket/i.test(code) && /not found|does not exist/i.test(code)
+        ? 'Photo storage is not set up. The site owner needs to run the latest Supabase migration.'
+        : /row-level|policy|unauthorized|permission|403/i.test(code)
+          ? 'Supabase blocked the upload. The site owner needs to apply the latest storage permissions.'
+          : 'Photo upload failed because of a network or storage error. Try again shortly.';
+      console.error('Profile photo upload failed:', uploadError.statusCode || 'unknown', uploadError.error || '');
       return;
     }
   }
@@ -940,6 +1004,9 @@ $('profile-details-form').addEventListener('submit', async event => {
   if (error) { button.disabled = false; status.textContent = metadataError ? 'Could not save your details. Apply the profile migration, then try again.' : 'Your details are saved to your account, but profile sync needs attention.'; console.error('Profile details update failed:', error.code || 'unknown'); return; }
   if (metadataError) console.warn('Profile details saved in database; account backup could not be updated.');
   state.profile = { ...state.profile, display_name: name, birth_date: birthDate, phone: phone || null };
+  const age = calculateAge(birthDate);
+  $('profile-age').textContent = age === null ? '' : `Age: ${age}`;
+  $('profile-age').hidden = age === null;
   state.requiresProfileUpdate = false;
   $('profile-name').textContent = name;
   $('user-avatar-initials').querySelector('img')?.setAttribute('alt', `Photo of ${name}`);
@@ -953,6 +1020,7 @@ $('profile-logout-btn').addEventListener('click', async event => {
   const button = event.currentTarget;
   button.disabled = true;
   button.textContent = 'Signing out...';
+  await stopSitePresence();
   const { error } = await db.auth.signOut();
   if (error) {
     button.disabled = false;
@@ -968,11 +1036,23 @@ async function loadAdminPanel() {
   const usersBox = $('admin-users');
   pendingBox.innerHTML = '<p class="empty-state">Loading...</p>';
   usersBox.innerHTML = '<p class="empty-state">Loading...</p>';
-  const [clipsResult, usersResult, ownerDetailsResult] = await Promise.all([
+  const [clipsResult, usersResult, ownerDetailsResult, countResult] = await Promise.all([
     db.from('clips').select('id,storage_path,caption,media_type,status,created_at').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
     db.rpc('list_admin_users'),
-    isOwner() ? db.rpc('list_owner_users') : Promise.resolve({ data: [], error: null })
+    isOwner() ? db.rpc('list_owner_users') : Promise.resolve({ data: [], error: null }),
+    db.rpc('get_admin_dashboard_stats')
   ]);
+  if (countResult.error) {
+    $('admin-registered-count').textContent = '—';
+    $('admin-registered-count-nav').hidden = true;
+    console.error('Admin membership count unavailable; apply the current Supabase migration:', countResult.error.code || 'unknown');
+  } else {
+    const stats = Array.isArray(countResult.data) ? countResult.data[0] : countResult.data;
+    const count = Number(stats?.registered_users);
+    $('admin-registered-count').textContent = Number.isFinite(count) ? count.toLocaleString() : '—';
+    $('admin-registered-count-nav').textContent = Number.isFinite(count) ? count.toLocaleString() : '—';
+    $('admin-registered-count-nav').hidden = !Number.isFinite(count);
+  }
   if (clipsResult.error) {
     pendingBox.innerHTML = '<p class="empty-state">Could not load the review queue.</p>';
     console.error('Admin clips query failed:', clipsResult.error.code || 'unknown');
@@ -993,7 +1073,11 @@ async function loadAdminPanel() {
       const details = isOwner() ? privateDetails.get(user.id) : null;
       return { ...user, email: details?.email || '', phone: details?.phone || 'Not found', avatarUrl: details?.avatar_path ? await getPrivateAvatarUrl(details.avatar_path) : '' };
     }));
-    usersBox.innerHTML = users.length ? `<table><thead><tr><th>Member</th>${isOwner() ? '<th>Email</th>' : ''}<th>Role</th><th>Access</th><th>Created</th>${isOwner() ? '<th>Manage Account</th>' : ''}</tr></thead><tbody>${users.map(user => `<tr><td><span class="admin-member-cell">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="">` : `<span class="participant-avatar-fallback">${escapeHtml(Array.from(user.display_name || 'M')[0])}</span>`}<b>${escapeHtml(user.display_name || 'Member')}</b></span></td>${isOwner() ? `<td><div>${escapeHtml(user.email)}</div><small class="owner-phone">Phone: ${escapeHtml(user.phone || 'Not provided')}</small></td>` : ''}<td>${user.role === 'owner' ? 'Owner' : user.role === 'admin' ? 'Admin' : 'Member'}</td><td>${user.is_banned ? 'Blocked' : 'Active'}</td><td>${escapeHtml(formatDate(user.created_at))}</td>${isOwner() ? (user.id === state.user.id ? '<td>Protected owner</td>' : `<td class="admin-user-actions"><select data-role-choice="${escapeHtml(user.id)}" aria-label="Role for ${escapeHtml(user.display_name || 'Member')}"><option value="member" ${user.role === 'member' ? 'selected' : ''}>Member</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Owner</option></select><button class="secondary-btn role-save-btn" type="button" data-save-role="${escapeHtml(user.id)}" data-current-role="${escapeHtml(user.role)}">Save Role</button><button class="danger-btn account-access-btn" type="button" data-set-block="${escapeHtml(user.id)}" data-blocked="${user.is_banned ? 'false' : 'true'}">${user.is_banned ? 'Restore Access' : 'Block Access'}</button></td>`) : ''}</tr>`).join('')}</tbody></table>` : '<p class="empty-state">No users found.</p>';
+    usersBox.innerHTML = users.length ? `<table><thead><tr><th>Member</th>${isOwner() ? '<th>Email</th>' : ''}<th>Age</th><th>Status</th><th>Role</th><th>Access</th><th>Created</th>${isOwner() ? '<th>Manage Account</th>' : ''}</tr></thead><tbody>${users.map(user => {
+      const age = calculateAge(user.birth_date);
+      return `<tr data-user-id="${escapeHtml(user.id)}"><td><span class="admin-member-cell">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="">` : `<span class="participant-avatar-fallback">${escapeHtml(Array.from(user.display_name || 'M')[0])}</span>`}<b>${escapeHtml(user.display_name || 'Member')}</b></span></td>${isOwner() ? `<td><div>${escapeHtml(user.email)}</div><small class="owner-phone">Phone: ${escapeHtml(user.phone || 'Not provided')}</small></td>` : ''}<td>${age === null ? '—' : age}</td><td><span class="admin-presence"><i class="admin-presence-dot" aria-hidden="true"></i><span class="admin-presence-label">Offline</span></span></td><td>${user.role === 'owner' ? 'Owner' : user.role === 'admin' ? 'Admin' : 'Member'}</td><td>${user.is_banned ? 'Blocked' : 'Active'}</td><td>${escapeHtml(formatDate(user.created_at))}</td>${isOwner() ? (user.id === state.user.id ? '<td>Protected owner</td>' : `<td class="admin-user-actions"><select data-role-choice="${escapeHtml(user.id)}" aria-label="Role for ${escapeHtml(user.display_name || 'Member')}"><option value="member" ${user.role === 'member' ? 'selected' : ''}>Member</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option><option value="owner" ${user.role === 'owner' ? 'selected' : ''}>Owner</option></select><button class="secondary-btn role-save-btn" type="button" data-save-role="${escapeHtml(user.id)}" data-current-role="${escapeHtml(user.role)}">Save Role</button><button class="danger-btn account-access-btn" type="button" data-set-block="${escapeHtml(user.id)}" data-blocked="${user.is_banned ? 'false' : 'true'}">${user.is_banned ? 'Restore Access' : 'Block Access'}</button></td>`) : ''}</tr>`;
+    }).join('')}</tbody></table>` : '<p class="empty-state">No users found.</p>';
+    updateAdminPresence();
   }
 }
 

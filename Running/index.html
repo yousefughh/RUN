@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=24">
+  <link rel="stylesheet" href="styles.css?v=28">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -84,7 +84,7 @@
         <button data-page="tickets">My Runs</button>
         <button data-page="chats">Chats</button>
         <button data-page="profile" class="profile-nav-btn"><svg class="nav-profile-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg><span>Profile</span></button>
-        <button data-page="admin" class="admin-only" hidden>Admin</button>
+        <button data-page="admin" class="admin-only admin-nav-button" hidden>Admin <span id="admin-registered-count-nav" class="admin-count-badge" hidden>0</span></button>
         <button data-page="organizer" class="admin-only" hidden>Manage Runs</button>
       </nav>
       <div class="user-menu">
@@ -180,6 +180,7 @@
 
       <section class="page admin-only" id="page-admin" hidden>
         <h2>Admin Dashboard</h2>
+        <section class="admin-summary" aria-label="Site membership"><div><strong id="admin-registered-count">—</strong><span>Registered members</span></div><div><strong id="admin-online-count">—</strong><span>Online now</span></div></section>
         <h3>Clips Pending Review</h3>
         <div id="admin-pending-clips" class="clips-grid"></div>
         <h3>Users</h3>
@@ -191,6 +192,7 @@
           <div class="avatar-large" id="profile-avatar-large">U</div>
           <h3 id="profile-name">User</h3>
           <p id="profile-email" class="muted-text">email@example.com</p>
+          <p id="profile-age" class="muted-text" hidden></p>
           <span class="role-badge" id="profile-role">ONE MORE STEP. Member</span>
           <form id="profile-photo-form" class="profile-photo-form">
             <label for="profile-photo-file">Profile photo (JPG, PNG or WebP, up to 5 MB)</label>
@@ -235,6 +237,6 @@
     <div class="toast" id="toast"></div>
   </div>
 
-  <script src="app.js?v=25"></script>
+  <script src="app.js?v=28"></script>
 </body>
 </html>
