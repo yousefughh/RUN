@@ -10,3 +10,7 @@ WITH CHECK (auth.uid() = id);
 
 GRANT UPDATE (display_name, avatar_path, phone, birth_date)
 ON TABLE public.profiles TO authenticated;
+
+-- The app reads the saved avatar path and basic profile fields after sign-in.
+GRANT SELECT (id, display_name, avatar_path, role, created_at)
+ON TABLE public.profiles TO authenticated;

@@ -938,9 +938,8 @@ $('profile-photo-form').addEventListener('submit', async event => {
   }
 
   const updates = { avatar_path: path };
-  const { data: updatedProfile, error: updateError } = await db.from('profiles')
-    .update(updates).eq('id', state.user.id)
-    .select('id,display_name,avatar_path,role,created_at').single();
+  const { error: updateError } = await db.from('profiles')
+    .update(updates).eq('id', state.user.id);
   if (updateError) {
     const { error: cleanupError } = path
       ? await db.storage.from('runmate-avatars').remove([path])
@@ -949,12 +948,12 @@ $('profile-photo-form').addEventListener('submit', async event => {
     const code = updateError.code || 'unknown';
     status.textContent = code === '42501'
       ? 'Supabase denied updating your profile photo. Run the latest supabase-migration.sql to add the profile update policy.'
-      : code === 'PGRST116'
-        ? 'The photo path could not be confirmed in your profile. Refresh and try again.'
-        : 'Could not save your profile. Please try again.';
+      : `Could not save your profile (${code}). Apply profile-update-policy-migration.sql, refresh, and try again.`;
     console.error('Profile update failed:', code, updateError.message || '', cleanupError ? 'Uploaded file cleanup failed' : '');
     return;
   }
+
+  const updatedProfile = { ...state.profile, avatar_path: path };
 
   let privateUrl = '';
   if (path) {
