@@ -173,8 +173,13 @@ FROM auth.users u LEFT JOIN public.profiles p ON p.id = u.id WHERE p.id IS NULL;
 DROP POLICY IF EXISTS "Users can insert their own regular profile" ON public.profiles;
 DROP POLICY IF EXISTS "Users can insert/update their profile." ON public.profiles;
 DROP POLICY IF EXISTS "Users can insert/update their profile" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Members can update their own profile fields" ON public.profiles;
 CREATE POLICY "Users can insert their own regular profile" ON public.profiles FOR INSERT TO authenticated
 WITH CHECK (auth.uid() = id AND role = 'member');
+CREATE POLICY "Members can update their own profile fields" ON public.profiles FOR UPDATE TO authenticated
+USING (auth.uid() = id)
+WITH CHECK (auth.uid() = id);
 
 CREATE TABLE IF NOT EXISTS public.clips (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -256,7 +256,7 @@ create policy "Users can insert their own regular profile"
 on public.profiles for insert to authenticated
 with check (auth.uid() = id and role = 'member');
 
-create policy "Users can update their own profile"
+create policy "Members can update their own profile fields"
 on public.profiles for update to authenticated
 using (auth.uid() = id)
 with check (auth.uid() = id);
