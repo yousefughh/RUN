@@ -1,8 +1,3 @@
-document.addEventListener('click', event => {
-  if (!event.target.closest('[data-scroll-runs]')) return;
-  document.getElementById('upcoming-runs-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-});
-
 /* ONE MORE STEP. + Supabase Client Config */
 const SUPABASE_URL = 'https://trqrpoployvsuuitffji.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_H54WIGq4spz51QFkSjmR8w_ohdXdv90';
@@ -522,6 +517,15 @@ function navigateTo(pageId) {
 }
 
 document.addEventListener('click', e => {
+  const runsLink = e.target.closest('[data-scroll-runs]');
+  if (runsLink) {
+    e.preventDefault();
+    if (!$('page-home')?.classList.contains('active')) navigateTo('home');
+    requestAnimationFrame(() => {
+      $('upcoming-runs-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      $('search')?.focus({ preventScroll: true });
+    });
+  }
   const pageBtn = e.target.closest('[data-page]');
   if (pageBtn) {
     e.preventDefault();
