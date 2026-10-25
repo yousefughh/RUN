@@ -264,6 +264,7 @@ $('form-register').addEventListener('submit', async e => {
     }
 
     if (data.user) {
+      window.trackProductEvent?.('signup_completed');
       if (data.session) {
         await loadSession(data.session);
         toast('Account created successfully');
@@ -292,6 +293,7 @@ $('form-login').addEventListener('submit', async e => {
   const result = await db.auth.signInWithPassword({ email, password });
 
   if (result.error) { console.error('Login failed:', result.error.code || 'unknown'); return showMessage(result.error.code === 'email_not_confirmed' ? 'Please confirm your email first. Resend the confirmation email using the button below.' : 'Could not sign in. Check your email and password.'); }
+  window.trackProductEvent?.('login_completed');
   await loadSession(result.data.session);
 });
 
@@ -512,6 +514,7 @@ function navigateTo(pageId) {
   
   const names = { clips: 'Clips', admin: 'Admin', home: 'Home', tickets: 'My Runs', chats: 'Chats', profile: 'Profile', organizer: 'Manage Runs' };
   $('crumb-active').textContent = names[pageId] || 'ONE MORE STEP.';
+  window.trackProductPageView?.(pageId);
 
   if (pageId === 'chats') renderChatsList();
   if (pageId === 'clips') loadClips();
@@ -634,6 +637,7 @@ async function toggleBooking(run, booked) {
     const { error } = await db.from('bookings').insert({ run_id: run.id, user_id: state.user.id });
     if (error) return toast(error.message?.includes('full') ? 'Sold out.' : error.code === '23505' ? 'You are already booked for this run.' : 'Could not complete your booking. Please try again.');
     toast('You are booked!');
+    window.trackProductEvent?.('run_booking_created');
   }
   $('modal').classList.remove('active');
   await refreshData();

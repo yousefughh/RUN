@@ -34,6 +34,12 @@ WHERE p.id = u.id AND lower(u.email) = lower('YOUR_LOGIN_EMAIL');
 
 ## النشر على Vercel
 
+## Sentry وPostHog
+
+- Sentry مربوط بمشروع `onemorestep/one-more-step`، مع مراقبة الأخطاء والأداء وتنقية روابط الطلب من query/hash وعدم إرسال بيانات المستخدم الافتراضية.
+- PostHog مضبوط على مشروع US Cloud. المفتاح الموجود في `posthog-config.js` هو **Project API Key** مخصص للواجهة الأمامية؛ لا تستبدله بـPersonal API Key أو مفتاح سري.
+- يبدأ PostHog جمع التحليلات تلقائيًا بعد إضافة مفتاح المشروع. autocapture وSession Replay معطلان، ولا نرسل البريد أو الاسم أو محتوى النماذج. الأحداث تقتصر على مشاهدات الصفحات ونجاح التسجيل/الدخول/الحجز.
+
 ## رابط الموقع على GitHub Pages
 
 بعد دمج التعديل، افتح Settings > Pages في المستودع واختر GitHub Actions كمصدر النشر. ينشر workflow مجلد `Running/`، والرابط المتوقع هو `https://yousefughh.github.io/RUN/`. أضف هذا الرابط إلى Supabase Authentication > URL Configuration ضمن Site URL وRedirect URLs حتى تعمل روابط تأكيد البريد على الهواتف.
