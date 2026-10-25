@@ -1071,7 +1071,7 @@ async function loadAdminPanel() {
     const privateDetails = new Map((ownerDetailsResult.data || []).map(user => [user.id, user]));
     const users = await Promise.all((usersResult.data || []).map(async user => {
       const details = isOwner() ? privateDetails.get(user.id) : null;
-      return { ...user, email: details?.email || '', phone: details?.phone || 'Not found', avatarUrl: details?.avatar_path ? await getPrivateAvatarUrl(details.avatar_path) : '' };
+      return { ...user, email: details?.email || '', phone: details?.phone || 'Not found', birth_date: details?.birth_date || user.birth_date || null, avatarUrl: details?.avatar_path ? await getPrivateAvatarUrl(details.avatar_path) : '' };
     }));
     usersBox.innerHTML = users.length ? `<table><thead><tr><th>Member</th>${isOwner() ? '<th>Email</th>' : ''}<th>Age</th><th>Status</th><th>Role</th><th>Access</th><th>Created</th>${isOwner() ? '<th>Manage Account</th>' : ''}</tr></thead><tbody>${users.map(user => {
       const age = calculateAge(user.birth_date);
