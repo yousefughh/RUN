@@ -942,16 +942,22 @@ $('profile-photo-form').addEventListener('submit', async event => {
   }
 
   const updates = { avatar_path: path };
-  const { data: updatedProfile, error: updateError } = await db.from('profiles')
-    .update(updates).eq('id', state.user.id)
-    .select('id,display_name,avatar_path,role,created_at').single();
+  const { error: updateError } = await db.from('profiles')
+    .update(updates).eq('id', state.user.id);
   if (updateError) {
-    if (path) await db.storage.from('runmate-avatars').remove([path]);
+    const { error: cleanupError } = path
+      ? await db.storage.from('runmate-avatars').remove([path])
+      : { error: null };
     button.disabled = false;
-    status.textContent = 'Could not save your profile. Please try again.';
-    console.error('Profile update failed:', updateError.code || 'unknown');
+    const code = updateError.code || 'unknown';
+    status.textContent = code === '42501'
+      ? 'Supabase denied updating your profile photo. Run the latest supabase-migration.sql to add the profile update policy.'
+      : `Could not save your profile (${code}). Apply profile-update-policy-migration.sql, refresh, and try again.`;
+    console.error('Profile update failed:', code, updateError.message || '', cleanupError ? 'Uploaded file cleanup failed' : '');
     return;
   }
+
+  const updatedProfile = { ...state.profile, avatar_path: path };
 
   let privateUrl = '';
   if (path) {
@@ -1075,7 +1081,7 @@ async function loadAdminPanel() {
     const privateDetails = new Map((ownerDetailsResult.data || []).map(user => [user.id, user]));
     const users = await Promise.all((usersResult.data || []).map(async user => {
       const details = isOwner() ? privateDetails.get(user.id) : null;
-      return { ...user, email: details?.email || '', phone: details?.phone || 'Not found', avatarUrl: details?.avatar_path ? await getPrivateAvatarUrl(details.avatar_path) : '' };
+      return { ...user, email: details?.email || '', phone: details?.phone || 'Not found', birth_date: details?.birth_date || user.birth_date || null, avatarUrl: details?.avatar_path ? await getPrivateAvatarUrl(details.avatar_path) : '' };
     }));
     usersBox.innerHTML = users.length ? `<table><thead><tr><th>Member</th>${isOwner() ? '<th>Email</th>' : ''}<th>Age</th><th>Status</th><th>Role</th><th>Access</th><th>Created</th>${isOwner() ? '<th>Manage Account</th>' : ''}</tr></thead><tbody>${users.map(user => {
       const age = calculateAge(user.birth_date);

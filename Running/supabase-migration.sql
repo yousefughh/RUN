@@ -173,8 +173,13 @@ FROM auth.users u LEFT JOIN public.profiles p ON p.id = u.id WHERE p.id IS NULL;
 DROP POLICY IF EXISTS "Users can insert their own regular profile" ON public.profiles;
 DROP POLICY IF EXISTS "Users can insert/update their profile." ON public.profiles;
 DROP POLICY IF EXISTS "Users can insert/update their profile" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Members can update their own profile fields" ON public.profiles;
 CREATE POLICY "Users can insert their own regular profile" ON public.profiles FOR INSERT TO authenticated
 WITH CHECK (auth.uid() = id AND role = 'member');
+CREATE POLICY "Members can update their own profile fields" ON public.profiles FOR UPDATE TO authenticated
+USING (auth.uid() = id)
+WITH CHECK (auth.uid() = id);
 
 CREATE TABLE IF NOT EXISTS public.clips (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -445,7 +450,7 @@ GRANT EXECUTE ON FUNCTION public.get_run_participants(uuid) TO authenticated;
 -- Only the owner can retrieve other accounts' email addresses for the admin page.
 DROP FUNCTION IF EXISTS public.list_owner_users();
 CREATE OR REPLACE FUNCTION public.list_owner_users()
-RETURNS TABLE (id uuid, email text, phone text, display_name text, avatar_path text, role text, created_at timestamptz)
+RETURNS TABLE (id uuid, email text, phone text, birth_date date, display_name text, avatar_path text, role text, created_at timestamptz)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
 BEGIN
   IF auth.uid() IS NULL OR NOT EXISTS (
@@ -454,7 +459,7 @@ BEGIN
     RAISE EXCEPTION 'owner_access_required';
   END IF;
   RETURN QUERY
-  SELECT p.id, u.email::text, COALESCE(p.phone, NULLIF(u.raw_user_meta_data ->> 'phone', '')), p.display_name, p.avatar_path, p.role, p.created_at
+  SELECT p.id, u.email::text, COALESCE(p.phone, NULLIF(u.raw_user_meta_data ->> 'phone', '')), COALESCE(p.birth_date, NULLIF(u.raw_user_meta_data ->> 'birth_date', '')::date), p.display_name, p.avatar_path, p.role, p.created_at
   FROM public.profiles p JOIN auth.users u ON u.id = p.id
   ORDER BY p.created_at DESC LIMIT 500;
 END;
